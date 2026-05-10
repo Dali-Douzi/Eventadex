@@ -1,0 +1,24 @@
+{
+  "name": "event-registration-saas",
+  "version": "1.0.0",
+  "description": "Multi-tenant event registration SaaS platform",
+  "private": true,
+  "workspaces": [
+    "server",
+    "client-master",
+    "client-admin",
+    "client-user"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev --workspace=server\" \"npm run dev --workspace=@event-saas/client-master\" \"npm run dev --workspace=@event-saas/client-admin\" \"npm run dev --workspace=@event-saas/client-user\"",
+    "dev:server": "npm run dev --workspace=server",
+    "dev:master": "npm run dev --workspace=@event-saas/client-master",
+    "dev:admin": "npm run dev --workspace=@event-saas/client-admin",
+    "dev:user": "npm run dev --workspace=@event-saas/client-user",
+    "install:all": "npm install",
+    "build:all": "npm run build --workspace=@event-saas/client-master && npm run build --workspace=@event-saas/client-admin && npm run build --workspace=@event-saas/client-user"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

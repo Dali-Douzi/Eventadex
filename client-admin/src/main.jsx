@@ -1,0 +1,16 @@
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import './styles/global.css';
+import App from './App';
+import ErrorBoundary from './components/ErrorBoundary';
+
+// Default title — DashboardLayout will override it with the real event name
+document.title = 'Admin Panel — Eventadex';
+
+ReactDOM.createRoot(document.getElementById('root')).render(
+  <React.StrictMode>
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
+  </React.StrictMode>
+);

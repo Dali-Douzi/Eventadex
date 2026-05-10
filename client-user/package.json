@@ -1,0 +1,24 @@
+{
+  "name": "@event-saas/client-user",
+  "version": "1.0.0",
+  "description": "Public event attendee registration React app",
+  "private": true,
+  "scripts": {
+    "dev": "vite --port 3002",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@stripe/react-stripe-js": "^3.6.0",
+    "@stripe/stripe-js": "^5.7.0",
+    "axios": "^1.8.4",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-google-recaptcha": "^3.1.0",
+    "react-router-dom": "^7.4.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "vite": "^6.2.4"
+  }
+}

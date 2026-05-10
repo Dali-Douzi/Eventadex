@@ -1,0 +1,19 @@
+{
+  "name": "eventadex-e2e",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:ui": "playwright test --ui",
+    "test:master": "playwright test tests/master-",
+    "test:admin": "playwright test tests/admin-",
+    "test:user": "playwright test tests/user-",
+    "report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.44.0",
+    "axios": "^1.7.2",
+    "dotenv": "^16.4.5"
+  }
+}
