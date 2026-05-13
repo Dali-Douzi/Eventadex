@@ -541,6 +541,42 @@ export default function RegistrationForm({ vip = false }) {
           const k = stateKey(f);
           init[k] = f.type === 'checkbox' ? false : '';
         });
+
+        // ── Moyasar redirect handling ─────────────────────────────────────
+        // After paying, Moyasar redirects back to /:orgSlug?id=PAY_ID&status=paid
+        // Restore the form values saved before the redirect and either jump to
+        // the review step (paid) or stay on the payment step (failed).
+        const urlParams     = new URLSearchParams(window.location.search);
+        const moyasarId     = urlParams.get('id');
+        const moyasarStatus = urlParams.get('status');
+
+        if (moyasarId) {
+          const raw = sessionStorage.getItem('moyasar_pending');
+          if (raw) {
+            try {
+              const { formValues, slug } = JSON.parse(raw);
+              if (slug === orgSlug) {
+                sessionStorage.removeItem('moyasar_pending');
+                window.history.replaceState({}, '', window.location.pathname);
+
+                if (moyasarStatus === 'paid') {
+                  setValues({ ...init, ...formValues, paymentIntentId: moyasarId });
+                  setStepIdx(s.length - 1); // jump straight to review
+                  setLoadState('loaded');
+                  return;
+                } else {
+                  // Payment failed — restore personal info, land back on payment step
+                  setValues({ ...init, ...formValues });
+                  setStepIdx(s.indexOf('payment'));
+                  setLoadState('loaded');
+                  return;
+                }
+              }
+            } catch { /* malformed sessionStorage — fall through to normal init */ }
+          }
+        }
+        // ─────────────────────────────────────────────────────────────────
+
         setValues(init);
 
         // Dynamic page title
@@ -859,12 +895,8 @@ export default function RegistrationForm({ vip = false }) {
               <PaymentStep
                 orgSlug={orgSlug}
                 amount={event.ticketPrice}
-                currency={event.currency || 'USD'}
-                onSuccess={(intentId) => {
-                  setValues((v) => ({ ...v, paymentIntentId: intentId }));
-                  setStepIdx((i) => i + 1);
-                  window.scrollTo({ top: 0, behavior: 'smooth' });
-                }}
+                currency={event.currency || 'SAR'}
+                formValues={values}
                 onBack={handleBack}
               />
             )}

@@ -53,21 +53,42 @@ const STANDARD_FIELD_NAMES = new Set([
   'sessionId', 'paymentIntentId',
 ]);
 
-// ─── Lazy Stripe initialisation ───────────────────────────────────────────────
-//
-// Stripe is only imported when the first payment endpoint is hit so the server
-// starts normally even when STRIPE_SECRET_KEY is not configured (free-only events).
+// ─── Moyasar payment verification ────────────────────────────────────────────
 
-let _stripe = null;
-function getStripe() {
-  if (!_stripe) {
-    if (!process.env.STRIPE_SECRET_KEY) {
-      throw new Error('STRIPE_SECRET_KEY is not configured in .env');
-    }
-    // eslint-disable-next-line global-require
-    _stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
-  }
-  return _stripe;
+/** Convert a ticket price to the smallest currency unit Moyasar expects. */
+function toSmallestUnit(amount, currency) {
+  const threeDecimal = ['KWD', 'BHD', 'OMR'];
+  const factor = threeDecimal.includes((currency || '').toUpperCase()) ? 1000 : 100;
+  return Math.round(amount * factor);
+}
+
+/** Fetch a Moyasar payment by ID using the secret key (HTTP Basic Auth). */
+function fetchMoyasarPayment(paymentId) {
+  const key = process.env.MOYASAR_SECRET_KEY;
+  if (!key) return Promise.reject(new Error('MOYASAR_SECRET_KEY is not configured'));
+
+  const auth = Buffer.from(`${key}:`).toString('base64');
+
+  return new Promise((resolve, reject) => {
+    const req = https.request(
+      {
+        hostname: 'api.moyasar.com',
+        path:     `/v1/payments/${encodeURIComponent(paymentId)}`,
+        method:   'GET',
+        headers:  { Authorization: `Basic ${auth}` },
+      },
+      (res) => {
+        let data = '';
+        res.on('data', (chunk) => { data += chunk; });
+        res.on('end', () => {
+          try { resolve(JSON.parse(data)); }
+          catch { reject(new Error('Invalid response from Moyasar')); }
+        });
+      }
+    );
+    req.on('error', reject);
+    req.end();
+  });
 }
 
 // ─── Shared helpers ───────────────────────────────────────────────────────────
@@ -186,53 +207,12 @@ async function getFormConfig(req, res) {
   }
 }
 
-// ─── 2. POST /api/public/:orgSlug/create-payment-intent ──────────────────────
-
+// ─── 2. POST /api/public/:orgSlug/create-payment-intent (removed) ────────────
+// Payment is now handled entirely client-side by the Moyasar form widget.
+// This endpoint is kept as a 410 Gone stub so old bookmarks/clients get a
+// clear error instead of a confusing 404.
 async function createPaymentIntent(req, res) {
-  try {
-    const org = await findActiveOrg(req.params.orgSlug);
-    if (!org) {
-      return res.status(404).json({ error: 'Registration not found or not available' });
-    }
-
-    const event = await findPublishedEvent(org._id);
-    if (!event) {
-      return res.status(404).json({ error: 'Registration not found or not available' });
-    }
-    if (!event.paymentEnabled) {
-      return res.status(400).json({ error: 'Payments are not enabled for this event' });
-    }
-    if (!event.ticketPrice || event.ticketPrice <= 0) {
-      return res.status(400).json({ error: 'Invalid ticket price configured' });
-    }
-
-    const stripe = getStripe();
-    const intent = await stripe.paymentIntents.create({
-      amount:   Math.round(event.ticketPrice * 100), // convert to smallest currency unit
-      currency: (event.currency || 'USD').toLowerCase(),
-      metadata: {
-        orgId:   org._id.toString(),
-        eventId: event._id.toString(),
-      },
-      automatic_payment_methods: { enabled: true },
-    });
-
-    return res.json({ clientSecret: intent.client_secret });
-  } catch (err) {
-    console.error('[public] createPaymentIntent error:', err);
-    // Surface Stripe-specific errors with a friendlier message
-    if (err.type === 'StripeAuthenticationError') {
-      return res.status(500).json({ error: 'Payment service is misconfigured. Please contact support.' });
-    }
-    if (err.type === 'StripeConnectionError' || err.code === 'ENOTFOUND') {
-      return res.status(503).json({ error: 'Could not reach the payment provider. Please try again.' });
-    }
-    if (err.type) {
-      // Any other Stripe error (StripeCardError, StripeRateLimitError, StripeInvalidRequestError …)
-      return res.status(400).json({ error: err.message });
-    }
-    return res.status(500).json({ error: 'Could not create payment session. Please try again.' });
-  }
+  return res.status(410).json({ error: 'This endpoint has been removed. Payment is now handled by Moyasar.' });
 }
 
 // ─── 3. POST /api/public/:orgSlug/register ────────────────────────────────────
@@ -281,35 +261,34 @@ async function register(req, res) {
       }
     }
 
-    // ── Payment verification ───────────────────────────────────
+    // ── Payment verification (Moyasar) ────────────────────────
     let paymentStatus = 'free';
     if (event.paymentEnabled) {
       if (!body.paymentIntentId) {
         return res.status(400).json({ error: 'Payment is required for this event' });
       }
 
-      const stripe = getStripe();
-      let intent;
+      let payment;
       try {
-        intent = await stripe.paymentIntents.retrieve(body.paymentIntentId);
-      } catch (stripeErr) {
-        console.error('[public] Stripe retrieve error:', stripeErr.message);
+        payment = await fetchMoyasarPayment(body.paymentIntentId);
+      } catch (err) {
+        console.error('[public] Moyasar fetch error:', err.message);
         return res.status(400).json({ error: 'Could not verify payment. Please try again.' });
       }
 
-      // 1. Status must be succeeded
-      if (intent.status !== 'succeeded') {
+      // 1. Status must be paid
+      if (payment.status !== 'paid') {
         return res.status(400).json({
-          error: `Payment has not been confirmed (Stripe status: ${intent.status})`,
+          error: `Payment has not been confirmed (status: ${payment.status})`,
         });
       }
 
-      // 2. Amount must match the configured ticket price — prevents price manipulation
-      const expectedCents = Math.round(event.ticketPrice * 100);
-      if (intent.amount !== expectedCents) {
+      // 2. Amount must match — prevents price manipulation
+      const expectedAmount = toSmallestUnit(event.ticketPrice, event.currency);
+      if (payment.amount !== expectedAmount) {
         console.warn(
-          `[public] Payment amount mismatch for org ${org._id}: ` +
-          `expected ${expectedCents} cents, got ${intent.amount} cents`
+          `[public] Moyasar amount mismatch for org ${org._id}: ` +
+          `expected ${expectedAmount}, got ${payment.amount}`
         );
         return res.status(400).json({
           error: 'Payment amount does not match the ticket price. Please restart the registration.',

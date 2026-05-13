@@ -1,64 +1,107 @@
-import { useState, useEffect } from 'react';
-import { loadStripe } from '@stripe/stripe-js';
-import {
-  Elements,
-  PaymentElement,
-  useStripe,
-  useElements,
-} from '@stripe/react-stripe-js';
-import api from '../api/axios';
+import { useEffect, useRef } from 'react';
 
-// ─── Stripe singleton (only initialised once, only if key is configured) ─────
-const stripeKey = import.meta.env.VITE_STRIPE_PUBLIC_KEY;
-const stripePromise = stripeKey && !stripeKey.startsWith('pk_test_your_')
-  ? loadStripe(stripeKey)
-  : null;
+const MOYASAR_KEY = import.meta.env.VITE_MOYASAR_PUBLIC_KEY;
+const MOYASAR_JS  = 'https://cdn.moyasar.com/moyasar/1.14.0/moyasar.js';
+const MOYASAR_CSS = 'https://cdn.moyasar.com/moyasar/1.14.0/moyasar.css';
 
 // ─── Currency formatter ───────────────────────────────────────────────────────
 function fmtCurrency(amount, currency) {
   try {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
-      currency: currency || 'USD',
+      currency: currency || 'SAR',
     }).format(amount);
   } catch {
-    return `${currency || 'USD'} ${amount}`;
+    return `${currency || 'SAR'} ${amount}`;
   }
 }
 
-// ─── Inner Stripe form (must live inside <Elements>) ─────────────────────────
-function StripeForm({ amount, currency, onSuccess, onBack }) {
-  const stripe   = useStripe();
-  const elements = useElements();
-  const [processing, setProcessing] = useState(false);
-  const [error, setError]           = useState('');
+// ─── Convert to smallest currency unit (halalas for SAR, fils for KWD etc.) ──
+function toSmallestUnit(amount, currency) {
+  const threeDecimal = ['KWD', 'BHD', 'OMR'];
+  const factor = threeDecimal.includes((currency || '').toUpperCase()) ? 1000 : 100;
+  return Math.round(amount * factor);
+}
 
-  async function handlePay(e) {
-    e.preventDefault();
-    if (!stripe || !elements) return;
+// ─── Payment step ─────────────────────────────────────────────────────────────
+//
+// Flow:
+//   1. Saves current form values to sessionStorage so they survive the redirect.
+//   2. Loads Moyasar's JS + CSS from CDN.
+//   3. Initialises the Moyasar payment form in the `.mysr-form` div.
+//   4. After the user pays, Moyasar redirects to:
+//        /{orgSlug}?id=PAYMENT_ID&status=paid   (success)
+//        /{orgSlug}?id=PAYMENT_ID&status=failed (failure)
+//   5. RegistrationForm detects the URL params on mount, restores the saved
+//      values from sessionStorage, and either jumps to review (success) or
+//      stays on the payment step (failure).
+// ─────────────────────────────────────────────────────────────────────────────
+export default function PaymentStep({ orgSlug, amount, currency, formValues, onBack }) {
+  const initRef = useRef(false);
 
-    setProcessing(true);
-    setError('');
+  useEffect(() => {
+    // React strict-mode fires effects twice in dev — guard against double init
+    if (initRef.current) return;
+    initRef.current = true;
 
-    const { error: stripeErr, paymentIntent } = await stripe.confirmPayment({
-      elements,
-      confirmParams: { return_url: window.location.href },
-      redirect: 'if_required',
-    });
+    // 1. Persist form values so they survive the Moyasar redirect
+    sessionStorage.setItem(
+      'moyasar_pending',
+      JSON.stringify({ formValues, slug: orgSlug })
+    );
 
-    if (stripeErr) {
-      setError(stripeErr.message || 'Payment failed. Please try again.');
-      setProcessing(false);
-    } else if (paymentIntent?.status === 'succeeded') {
-      onSuccess(paymentIntent.id);
-    } else {
-      setError(`Unexpected payment status: ${paymentIntent?.status}. Please try again.`);
-      setProcessing(false);
+    // 2. Inject Moyasar CSS (once)
+    if (!document.getElementById('moyasar-css')) {
+      const link = document.createElement('link');
+      link.id   = 'moyasar-css';
+      link.rel  = 'stylesheet';
+      link.href = MOYASAR_CSS;
+      document.head.appendChild(link);
     }
+
+    // 3. Load Moyasar JS then initialise the form
+    if (document.getElementById('moyasar-js')) {
+      initForm();
+    } else {
+      const script    = document.createElement('script');
+      script.id       = 'moyasar-js';
+      script.src      = MOYASAR_JS;
+      script.onload   = initForm;
+      document.head.appendChild(script);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function initForm() {
+    if (!window.Moyasar) return;
+    window.Moyasar.init({
+      element:             '.mysr-form',
+      amount:              toSmallestUnit(amount, currency),
+      currency:            (currency || 'SAR').toUpperCase(),
+      description:         'Event registration fee',
+      publishable_api_key: MOYASAR_KEY,
+      // Moyasar appends ?id=PAYMENT_ID&status=paid to this URL after payment
+      callback_url:        `${window.location.origin}/${orgSlug}`,
+      methods:             ['creditcard', 'applepay'],
+      supported_networks:  ['mada', 'visa', 'mastercard', 'amex'],
+    });
+  }
+
+  // ── Misconfigured (no publishable key) ────────────────────────────────────
+  if (!MOYASAR_KEY) {
+    return (
+      <div className="step-content">
+        <div className="payment-error">
+          Payment is not configured. Please contact the event organiser.
+        </div>
+        <div className="step-nav">
+          <button className="btn btn-outline" onClick={onBack}>← Back</button>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <form onSubmit={handlePay} className="step-content">
+    <div className="step-content">
       <h2 className="step-heading">Payment</h2>
 
       {/* Price summary */}
@@ -67,22 +110,8 @@ function StripeForm({ amount, currency, onSuccess, onBack }) {
         <span className="payment-price-amount">{fmtCurrency(amount, currency)}</span>
       </div>
 
-      {/* Stripe card input */}
-      <div className="payment-stripe-wrap">
-        <PaymentElement />
-      </div>
-
-      {error && (
-        <div className="payment-error">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
-               width="15" height="15" style={{ flexShrink: 0 }}>
-            <circle cx="12" cy="12" r="10"/>
-            <line x1="12" y1="8" x2="12" y2="12"/>
-            <line x1="12" y1="16" x2="12.01" y2="16"/>
-          </svg>
-          {error}
-        </div>
-      )}
+      {/* Moyasar renders its form into this div */}
+      <div className="mysr-form" style={{ marginTop: 20 }} />
 
       <div className="payment-secure-note">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
@@ -90,93 +119,14 @@ function StripeForm({ amount, currency, onSuccess, onBack }) {
           <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
           <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
         </svg>
-        Secured by Stripe. We never store your card details.
+        Secured by Moyasar. We never store your card details.
       </div>
 
-      {/* Navigation */}
       <div className="step-nav">
-        <button type="button" className="btn btn-outline" onClick={onBack} disabled={processing}>
+        <button type="button" className="btn btn-outline" onClick={onBack}>
           ← Back
         </button>
-        <button
-          type="submit"
-          className="btn btn-primary"
-          disabled={!stripe || processing}
-        >
-          {processing
-            ? <><span className="spinner" style={{ width: 16, height: 16, borderWidth: 2, marginBottom: 0, marginRight: 6, display: 'inline-block' }} />Processing…</>
-            : `Pay ${fmtCurrency(amount, currency)} →`
-          }
-        </button>
       </div>
-    </form>
-  );
-}
-
-// ─── Outer wrapper — fetches clientSecret then mounts Elements ───────────────
-export default function PaymentStep({ orgSlug, amount, currency, onSuccess, onBack }) {
-  const [clientSecret, setClientSecret] = useState('');
-  const [loadErr, setLoadErr]           = useState('');
-  const [loading, setLoading]           = useState(true);
-
-  useEffect(() => {
-    api.post(`/api/public/${orgSlug}/create-payment-intent`)
-      .then(({ data }) => setClientSecret(data.clientSecret))
-      .catch((err) => setLoadErr(
-        err.response?.data?.error || 'Could not initialise payment. Please try again.'
-      ))
-      .finally(() => setLoading(false));
-  }, [orgSlug]);
-
-  if (!stripePromise) {
-    return (
-      <div className="step-content">
-        <div className="payment-error">
-          Stripe is not configured. Please set VITE_STRIPE_PUBLIC_KEY in your environment.
-        </div>
-        <div className="step-nav">
-          <button className="btn btn-outline" onClick={onBack}>← Back</button>
-        </div>
-      </div>
-    );
-  }
-
-  if (loading) {
-    return (
-      <div className="payment-loading">
-        <div className="spinner" />
-        Preparing secure payment…
-      </div>
-    );
-  }
-
-  if (loadErr) {
-    return (
-      <div className="step-content">
-        <div className="payment-error">{loadErr}</div>
-        <div className="step-nav">
-          <button className="btn btn-outline" onClick={onBack}>← Back</button>
-        </div>
-      </div>
-    );
-  }
-
-  const stripeOpts = {
-    clientSecret,
-    appearance: {
-      theme: 'stripe',
-      variables: { colorPrimary: '#2563eb', borderRadius: '8px' },
-    },
-  };
-
-  return (
-    <Elements stripe={stripePromise} options={stripeOpts}>
-      <StripeForm
-        amount={amount}
-        currency={currency}
-        onSuccess={onSuccess}
-        onBack={onBack}
-      />
-    </Elements>
+    </div>
   );
 }
