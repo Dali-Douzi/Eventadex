@@ -42,6 +42,7 @@ function buildEmailHtml(template, variables = {}) {
     sessionDate      = '',
     countdown        = '',       // e.g. "3 days, 14 hours, and 22 minutes"
     countdownImage   = '',       // raw HTML <img …> for the live countdown image
+    confirmationUrl  = '#',      // link to the registrant's confirmation/ticket page
   } = variables;
 
   const primaryColor = template.buttonColor || '#2563eb';
@@ -112,26 +113,28 @@ function buildEmailHtml(template, variables = {}) {
       const qrImg = `<img src="cid:qrcode" alt="Your QR Code" width="200" height="200"
         style="display:block;border-radius:8px;border:1px solid #e2e8f0;"/>`;
       return template.customHtml
-        .replace(/\{\{firstName\}\}/g,      safeFirstName)
-        .replace(/\{\{lastName\}\}/g,       safeLastName)
-        .replace(/\{\{eventName\}\}/g,      safeEventName)
-        .replace(/\{\{sessionName\}\}/g,    safeSessionName)
-        .replace(/\{\{sessionDate\}\}/g,    safeSessionDate)
-        .replace(/\{\{countdown\}\}/g,      safeCountdown)
-        .replace(/\{\{countdownImage\}\}/g, countdownImage)
-        .replace(/\{\{qrCode\}\}/g,         qrImg);
+        .replace(/\{\{firstName\}\}/g,       safeFirstName)
+        .replace(/\{\{lastName\}\}/g,        safeLastName)
+        .replace(/\{\{eventName\}\}/g,       safeEventName)
+        .replace(/\{\{sessionName\}\}/g,     safeSessionName)
+        .replace(/\{\{sessionDate\}\}/g,     safeSessionDate)
+        .replace(/\{\{countdown\}\}/g,       safeCountdown)
+        .replace(/\{\{countdownImage\}\}/g,  countdownImage)
+        .replace(/\{\{confirmationUrl\}\}/g, confirmationUrl)
+        .replace(/\{\{qrCode\}\}/g,          qrImg);
     }
 
     // Body content mode — embed inside the system wrapper
     bodyHtml = template.customHtml
-      .replace(/\{\{firstName\}\}/g,      safeFirstName)
-      .replace(/\{\{lastName\}\}/g,       safeLastName)
-      .replace(/\{\{eventName\}\}/g,      safeEventName)
-      .replace(/\{\{sessionName\}\}/g,    safeSessionName)
-      .replace(/\{\{sessionDate\}\}/g,    safeSessionDate)
-      .replace(/\{\{countdown\}\}/g,      safeCountdown)
-      .replace(/\{\{countdownImage\}\}/g, countdownImage)
-      .replace(/\{\{qrCode\}\}/g,         qrBlock);
+      .replace(/\{\{firstName\}\}/g,       safeFirstName)
+      .replace(/\{\{lastName\}\}/g,        safeLastName)
+      .replace(/\{\{eventName\}\}/g,       safeEventName)
+      .replace(/\{\{sessionName\}\}/g,     safeSessionName)
+      .replace(/\{\{sessionDate\}\}/g,     safeSessionDate)
+      .replace(/\{\{countdown\}\}/g,       safeCountdown)
+      .replace(/\{\{countdownImage\}\}/g,  countdownImage)
+      .replace(/\{\{confirmationUrl\}\}/g, confirmationUrl)
+      .replace(/\{\{qrCode\}\}/g,          qrBlock);
   } else {
     // Plain body text — escape then substitute
     const rawBody  = template.bodyText || '';
@@ -167,7 +170,7 @@ function buildEmailHtml(template, variables = {}) {
              style="margin:28px 0 4px;">
          <tr>
            <td align="center">
-             <a href="#" style="${btnStyle}">${sub(escHtml(template.buttonLabel))}</a>
+             <a href="${confirmationUrl}" style="${btnStyle}">${sub(escHtml(template.buttonLabel))}</a>
            </td>
          </tr>
        </table>`

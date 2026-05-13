@@ -4,12 +4,13 @@ import { assetUrl } from '../utils/assetUrl';
 
 // ─── Available template variables ────────────────────────────────────────────
 const VARIABLES = [
-  { token: '{{firstName}}',   desc: 'Registrant first name'  },
-  { token: '{{lastName}}',    desc: 'Registrant last name'   },
-  { token: '{{eventName}}',   desc: 'Event name'             },
-  { token: '{{sessionName}}', desc: 'Session name'           },
-  { token: '{{sessionDate}}', desc: 'Session date'           },
-  { token: '{{qrCode}}',      desc: 'QR code image (inline)' },
+  { token: '{{firstName}}',       desc: 'Registrant first name'              },
+  { token: '{{lastName}}',        desc: 'Registrant last name'               },
+  { token: '{{eventName}}',       desc: 'Event name'                         },
+  { token: '{{sessionName}}',     desc: 'Session name'                       },
+  { token: '{{sessionDate}}',     desc: 'Session date'                       },
+  { token: '{{qrCode}}',          desc: 'QR code image (inline)'             },
+  { token: '{{confirmationUrl}}', desc: 'Link to registrant\'s ticket page'  },
 ];
 
 // ─── Variable substitution (preview only) ────────────────────────────────────

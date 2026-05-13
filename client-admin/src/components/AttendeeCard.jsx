@@ -70,8 +70,7 @@ export default function AttendeeCard({ registrant: r, sessions = [], compact = f
   })();
 
   const hasDetails =
-    r.phone || r.country || r.title || r.hearAbout ||
-    r.registerInterest || r.sponsorType || r.wingType;
+    r.phone || r.country || r.title || r.hearAbout;
 
   return (
     <div>
@@ -108,9 +107,6 @@ export default function AttendeeCard({ registrant: r, sessions = [], compact = f
             <Field label="Country"           value={r.country}          />
             <Field label="Title"             value={r.title}            />
             <Field label="Hear About"        value={r.hearAbout}        />
-            <Field label="Interest"          value={r.registerInterest} />
-            <Field label="Sponsor Type"      value={r.sponsorType}      />
-            <Field label="Wing Type"         value={r.wingType}         />
           </div>
         </>
       )}

@@ -18,9 +18,10 @@ A MERN-stack SaaS platform for creating and managing event registrations. Suppor
 ## Prerequisites
 
 - **Node.js** v20+ and **npm** v10+
-- **MongoDB** v6+ running locally (or a MongoDB Atlas URI)
+- **MongoDB** — either:
+  - [MongoDB Atlas](https://www.mongodb.com/atlas) free tier (recommended, no local install), **or**
+  - [MongoDB Community Server](https://www.mongodb.com/try/download/community) installed locally
 - **Git**
-- *(Optional)* **Docker** & **Docker Compose** v2 for containerized deployment
 - *(Optional)* **Stripe** account for payment features
 
 ---
@@ -103,58 +104,77 @@ See [`.env.production.example`](.env.production.example) for a full list with co
 
 ---
 
-## Docker Deployment
+## Production Deployment (no Docker — pm2 + serve)
 
-### 1. Build all React apps
+This is the recommended way to run the app. No Docker required.
+
+### 1. One-time global tool install
+
+```bash
+npm run setup
+# installs pm2 (process manager) and serve (static file server) globally
+```
+
+### 2. Create `server/.env`
+
+```bash
+cp .env.example server/.env
+```
+
+Edit `server/.env` and fill in at minimum:
+
+| Variable | Value |
+|---|---|
+| `MONGO_URI` | MongoDB Atlas URI **or** `mongodb://localhost:27017/eventadex` |
+| `JWT_SECRET` | Any long random string |
+| `EMAIL_*` | Your SMTP credentials |
+
+> **MongoDB options:**
+> - **Recommended:** [MongoDB Atlas free tier](https://www.mongodb.com/atlas) — sign up, create a free cluster, copy the connection string.
+> - **Local:** Install [MongoDB Community Server](https://www.mongodb.com/try/download/community) and use `mongodb://localhost:27017/eventadex`.
+
+### 3. Install dependencies
+
+```bash
+npm install
+```
+
+### 4. Build the React apps
 
 ```bash
 npm run build:all
 ```
 
-Compiled bundles are output to `client-master/dist`, `client-admin/dist`, and `client-user/dist` — nginx serves them directly.
+Compiled bundles are written to `client-*/dist/`.
 
-### 2. Create your production `.env`
+### 5. Start everything
 
 ```bash
-cp .env.production.example .env
-# Edit .env — set at minimum MONGO_URI, JWT_SECRET, SMTP_*, and CLIENT_*_URL
+npm run start:prod
 ```
 
-> The `.env` file must be in the **repository root** (next to `docker-compose.yml`), not inside `server/`.
+Or on Windows, just double-click **`start.bat`**.
 
-### 3. Start all services
+| URL | App |
+|---|---|
+| http://localhost:3000 | Platform Admin |
+| http://localhost:3001 | Event Admin |
+| http://localhost:3002 | Registration Form |
+| http://localhost:5000/api/health | API health check |
+
+### 6. Seed the master user (first run only)
 
 ```bash
-docker compose up -d
+npm run seed:master --workspace=server
 ```
 
-This starts three containers:
-
-| Container | Image | Role |
-|---|---|---|
-| `event_mongo` | `mongo:7` | Database (data persisted in `mongo_data` volume) |
-| `event_server` | Built from `./server/Dockerfile` | Express API |
-| `event_nginx` | `nginx:alpine` | Serves React apps + proxies `/api` calls to the server |
-
-### 4. Seed the master user inside Docker
+### 7. Useful commands
 
 ```bash
-docker compose exec server node scripts/seedMaster.js
-```
-
-### 5. View logs
-
-```bash
-docker compose logs -f server
-docker compose logs -f nginx
-```
-
-### 6. Stop
-
-```bash
-docker compose down
-# To also remove the database volume:
-docker compose down -v
+npm run logs      # tail logs from all 4 processes
+npm run status    # show pm2 process status table
+npm run restart   # restart all processes (e.g. after .env change)
+npm run stop      # stop all processes
 ```
 
 ---
@@ -163,13 +183,19 @@ docker compose down -v
 
 | Script | Description |
 |---|---|
-| `npm run dev` | Start all 4 services concurrently (development) |
-| `npm run dev:server` | Start Express server only |
-| `npm run dev:master` | Start client-master Vite dev server |
-| `npm run dev:admin` | Start client-admin Vite dev server |
-| `npm run dev:user` | Start client-user Vite dev server |
+| `npm run dev` | **Development** — start all 4 services with hot-reload |
+| `npm run dev:server` | Start Express server only (nodemon) |
+| `npm run dev:master` | Start client-master Vite dev server only |
+| `npm run dev:admin` | Start client-admin Vite dev server only |
+| `npm run dev:user` | Start client-user Vite dev server only |
 | `npm run build:all` | Build all 3 React apps for production |
 | `npm run install:all` | Install all workspace dependencies |
+| `npm run setup` | One-time install of pm2 and serve globally |
+| `npm run start:prod` | **Production** — launch all 4 processes via pm2 |
+| `npm run stop` | Stop all pm2-managed processes |
+| `npm run restart` | Restart all pm2-managed processes |
+| `npm run logs` | Tail live logs from all processes |
+| `npm run status` | Show pm2 process status table |
 
 ---
 

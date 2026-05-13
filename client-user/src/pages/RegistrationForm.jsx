@@ -31,8 +31,6 @@ const FIELD_LOOKUP_MAP = {
   title:            'titles',
   country:          'countries',
   hearAbout:        'hearAbout',
-  registerInterest: 'registerInterest',
-  sponsorType:      'sponsorTypes',
   wingType:         'wingTypes',
 };
 

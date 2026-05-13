@@ -117,6 +117,7 @@ async function sendConfirmationEmail({
   emailTemplate,
   qrCodeDataUrl,
   logoUrl,
+  confirmationUrl,
 }) {
   // Silently skip when no template or no subject has been configured yet
   if (!emailTemplate || !emailTemplate.subject) return;
@@ -128,11 +129,12 @@ async function sendConfirmationEmail({
     : '';
 
   const vars = {
-    firstName:   registrant.firstName  || '',
-    lastName:    registrant.lastName   || '',
-    eventName:   event?.name           || '',
-    sessionName: session?.name         || '',
+    firstName:       registrant.firstName  || '',
+    lastName:        registrant.lastName   || '',
+    eventName:       event?.name           || '',
+    sessionName:     session?.name         || '',
     sessionDate,
+    confirmationUrl: confirmationUrl       || '#',
   };
 
   // ── Inline image attachments (logo, header image, footer image) ──────────
@@ -186,13 +188,14 @@ async function sendTestEmail({ emailTemplate, toEmail, eventName, logoUrl }) {
   }
 
   const vars = {
-    firstName:   'Jane',
-    lastName:    'Doe',
-    eventName:   eventName || 'Sample Event',
-    sessionName: 'Morning Workshop',
-    sessionDate: new Date().toLocaleDateString('en-US', {
+    firstName:       'Jane',
+    lastName:        'Doe',
+    eventName:       eventName || 'Sample Event',
+    sessionName:     'Morning Workshop',
+    sessionDate:     new Date().toLocaleDateString('en-US', {
       weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
     }),
+    confirmationUrl: `${process.env.CLIENT_USER_URL || '#'}/preview/confirmation/test`,
   };
 
   // ── Inline image attachments ──────────────────────────────────────────────

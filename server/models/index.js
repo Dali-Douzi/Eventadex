@@ -1,6 +1,7 @@
 const createLookupModel = require('./lookup.factory');
 
 const MasterUser       = require('./MasterUser');
+const Visitor          = require('./Visitor');
 const Organization     = require('./Organization');
 const Event            = require('./Event');
 const PageConfig       = require('./PageConfig');
@@ -14,10 +15,7 @@ const VipEmailTemplate = require('./VipEmailTemplate');
 // Lookup models (shared schema, distinct collections)
 const Title            = createLookupModel('Title');
 const Country          = createLookupModel('Country');
-const SponsorType      = createLookupModel('SponsorType');
 const HearAbout        = createLookupModel('HearAbout');
-const RegisterInterest = createLookupModel('RegisterInterest');
-
 module.exports = {
   MasterUser,
   Organization,
@@ -31,7 +29,6 @@ module.exports = {
   VipEmailTemplate,
   Title,
   Country,
-  SponsorType,
   HearAbout,
-  RegisterInterest,
+  Visitor,
 };

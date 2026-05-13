@@ -2,7 +2,7 @@
 
 const router = require('express').Router();
 const { requireAdmin, requirePermission }    = require('../middleware/auth');
-const { handleLogoUpload, handleBadgeBgUpload, handleBannerUpload, handleEmailImageUpload } = require('../middleware/upload');
+const { handleLogoUpload, handleBadgeBgUpload, handleBannerUpload, handleEmailImageUpload, handleImportUpload } = require('../middleware/upload');
 const {
   getReminderConfig, updateReminderConfig,
   uploadReminderImage, removeReminderImage,
@@ -30,6 +30,8 @@ const {
   listVipRegistrants, exportVipRegistrants, searchVipRegistrant, checkInVip, checkOutVip,
   getLookups,
   getDashboardStats,
+  importRegistrants,
+  downloadImportTemplate,
 } = require('../controllers/adminController');
 
 // All admin routes require auth + rate limiting
@@ -66,9 +68,11 @@ router.post ('/vip-email-template/test',           requirePermission('canViewVip
 router.post ('/vip-email-template/image/:type',    requirePermission('canViewVip'), handleEmailImageUpload, uploadVipEmailImage);
 
 // ── Registrants — specific paths before :id to avoid route shadowing ──────────
-router.get  ('/registrants/export',                     requirePermission('canExportData'), exportRegistrants);
-router.get  ('/registrants/search',                     searchRegistrant);
-router.get  ('/registrants',                            listRegistrants);
+router.get  ('/registrants/export',          requirePermission('canExportData'), exportRegistrants);
+router.get  ('/registrants/import-template', downloadImportTemplate);
+router.post ('/registrants/import',          handleImportUpload, importRegistrants);
+router.get  ('/registrants/search',          searchRegistrant);
+router.get  ('/registrants',                 listRegistrants);
 router.get  ('/registrants/:id',  [idParam, validate],  getRegistrant);
 router.patch('/registrants/:id/checkin',  requirePermission('canCheckIn'), [idParam, validate], checkIn);
 router.patch('/registrants/:id/checkout', requirePermission('canCheckIn'), [idParam, validate], checkOut);
