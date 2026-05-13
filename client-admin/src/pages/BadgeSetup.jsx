@@ -4,49 +4,66 @@ import { BadgePrintView, AVAILABLE_FIELDS, DEFAULT_BADGE_CONFIG } from '../compo
 import { useToast } from '../context/ToastContext';
 import { assetUrl } from '../utils/assetUrl';
 
-// ─── Size presets ─────────────────────────────────────────────────────────────
-
-const SIZE_PRESETS = [
-  { label: 'Credit Card (85 × 54 mm)',  value: 'credit', w: 85,  h: 54  },
-  { label: 'A6 (105 × 74 mm)',          value: 'a6',     w: 105, h: 74  },
-  { label: 'Large (120 × 90 mm)',        value: 'large',  w: 120, h: 90  },
-  { label: 'Custom',                     value: 'custom', w: null, h: null },
-];
-
-function detectPreset(w, h) {
-  const found = SIZE_PRESETS.find((p) => p.w === w && p.h === h);
-  return found ? found.value : 'custom';
-}
-
-// ─── Reusable sub-components ──────────────────────────────────────────────────
+// ─── Small reusable controls ──────────────────────────────────────────────────
 
 function Toggle({ checked, onChange, title }) {
   return (
     <label className="toggle" title={title}>
-      <input
-        type="checkbox"
-        className="toggle-input"
-        checked={!!checked}
-        onChange={(e) => onChange(e.target.checked)}
-      />
+      <input type="checkbox" className="toggle-input" checked={!!checked} onChange={(e) => onChange(e.target.checked)} />
       <span className="toggle-track" />
     </label>
   );
 }
 
+// Number input with inline unit label
+function MmInput({ label, value, onChange, min = 0, max = 300, step = 0.5, unit = 'mm' }) {
+  return (
+    <div className="bs-mm-row">
+      <span className="bs-mm-label">{label}</span>
+      <div className="bs-mm-control">
+        <input
+          className="bs-num-input"
+          type="number"
+          min={min} max={max} step={step}
+          value={value ?? ''}
+          onChange={(e) => onChange(Number(e.target.value))}
+        />
+        <span className="bs-mm-unit">{unit}</span>
+      </div>
+    </div>
+  );
+}
+
+// Color picker row: swatch + hex input
+function ColorRow({ label, value, onChange }) {
+  return (
+    <div className="bs-mm-row">
+      <span className="bs-mm-label">{label}</span>
+      <div className="color-row" style={{ flex: 1 }}>
+        <input type="color" className="color-swatch" value={value || '#000000'} onChange={(e) => onChange(e.target.value)} />
+        <input className="input" value={value || ''} onChange={(e) => onChange(e.target.value)} placeholder="#000000" maxLength={7} style={{ flex: 1 }} />
+      </div>
+    </div>
+  );
+}
+
+// Toggle row with optional indent
+function ToggleRow({ label, checked, onChange }) {
+  return (
+    <div className="bs-toggle-row">
+      <Toggle checked={checked} onChange={onChange} />
+      <span className="bs-toggle-label">{label}</span>
+    </div>
+  );
+}
+
+// Section accordion
 function Section({ title, icon, isOpen, onToggle, children }) {
   return (
     <div className="pb-section">
       <button className="pb-section-toggle" onClick={onToggle}>
-        <span className="pb-section-left">
-          {icon}
-          {title}
-        </span>
-        <svg
-          className={`pb-chevron${isOpen ? ' pb-chevron-open' : ''}`}
-          viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
-          width="14" height="14"
-        >
+        <span className="pb-section-left">{icon}{title}</span>
+        <svg className={`pb-chevron${isOpen ? ' pb-chevron-open' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="14" height="14">
           <polyline points="6 9 12 15 18 9" />
         </svg>
       </button>
@@ -55,64 +72,52 @@ function Section({ title, icon, isOpen, onToggle, children }) {
   );
 }
 
-// ─── Section icons ────────────────────────────────────────────────────────────
+// Sub-heading within a section
+function SubHeading({ children }) {
+  return <p className="bs-subheading">{children}</p>;
+}
 
-const SizeIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="15" height="15">
-    <rect x="3" y="3" width="18" height="18" rx="2"/>
-    <path d="M3 9h18M9 3v18"/>
-  </svg>
-);
-const BgIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="15" height="15">
-    <rect x="3" y="3" width="18" height="18" rx="2"/>
-    <circle cx="8.5" cy="8.5" r="1.5"/>
-    <polyline points="21 15 16 10 5 21"/>
-  </svg>
-);
-const LogoIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="15" height="15">
-    <circle cx="12" cy="12" r="3"/>
-    <path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/>
-  </svg>
-);
-const QrIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="15" height="15">
-    <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
-    <rect x="3" y="14" width="7" height="7"/>
-    <path d="M14 14h1v1h-1zM17 14h3v3h-3zM14 17h3v3"/>
-  </svg>
-);
-const FieldsIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="15" height="15">
-    <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/>
-    <line x1="8" y1="18" x2="21" y2="18"/>
-    <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/>
-    <line x1="3" y1="18" x2="3.01" y2="18"/>
-  </svg>
-);
+// ─── Section icons ────────────────────────────────────────────────────────────
+const CanvasIcon  = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="15" height="15"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 3v18"/></svg>;
+const HeaderIcon  = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="15" height="15"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/></svg>;
+const FieldsIcon  = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="15" height="15"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>;
+const FooterIcon  = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="15" height="15"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 15h18"/></svg>;
+
+// ─── Position picker (left / center / right) ──────────────────────────────────
+function PosPicker({ value, onChange, options }) {
+  return (
+    <div className="bs-btn-group">
+      {options.map(({ value: v, label }) => (
+        <button
+          key={v}
+          className={`bs-pos-btn${value === v ? ' bs-pos-btn-active' : ''}`}
+          onClick={() => onChange(v)}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 // ─── Main component ───────────────────────────────────────────────────────────
-
 export default function BadgeSetup() {
   const toast = useToast();
-  const [config,     setConfig]     = useState(DEFAULT_BADGE_CONFIG);
-  const [orgLogoUrl, setOrgLogoUrl] = useState(null);
-  const [loading,    setLoading]    = useState(true);
-  const [saveState,  setSaveState]  = useState('idle'); // idle|saving|saved|error
+  const [config,      setConfig]      = useState(DEFAULT_BADGE_CONFIG);
+  const [orgLogoUrl,  setOrgLogoUrl]  = useState(null);
+  const [loading,     setLoading]     = useState(true);
+  const [saveState,   setSaveState]   = useState('idle');
   const [bgUploading, setBgUploading] = useState(false);
-
-  const [sections, setSections] = useState({
-    size:       true,
-    background: true,
-    logo:       true,
-    qr:         true,
-    fields:     true,
-  });
-
   const bgInputRef = useRef(null);
 
-  // ── Fetch badge config + org logo on mount ────────────────
+  const [sections, setSections] = useState({
+    canvas:  true,
+    header:  true,
+    fields:  true,
+    footer:  true,
+  });
+
+  // ── Fetch config + org logo ───────────────────────────────
   useEffect(() => {
     Promise.all([
       api.get('/api/admin/badge-config'),
@@ -130,23 +135,9 @@ export default function BadgeSetup() {
       .finally(() => setLoading(false));
   }, []);
 
-  // ── Generic config setter ─────────────────────────────────
-  function set(key, value) {
-    setConfig((c) => ({ ...c, [key]: value }));
-  }
-
-  function toggleSection(key) {
-    setSections((s) => ({ ...s, [key]: !s[key] }));
-  }
-
-  // ── Size preset handling ──────────────────────────────────
-  function handlePreset(value) {
-    const preset = SIZE_PRESETS.find((p) => p.value === value);
-    if (preset?.w) set('width', preset.w);
-    if (preset?.h) set('height', preset.h);
-  }
-
-  const currentPreset = detectPreset(config.width, config.height);
+  // ── Generic setters ───────────────────────────────────────
+  function set(key, value) { setConfig((c) => ({ ...c, [key]: value })); }
+  function toggleSection(key) { setSections((s) => ({ ...s, [key]: !s[key] })); }
 
   // ── Background image upload ───────────────────────────────
   async function handleBgUpload(e) {
@@ -168,9 +159,7 @@ export default function BadgeSetup() {
 
   // ── Field helpers ─────────────────────────────────────────
   function updateField(i, key, value) {
-    set('fields', config.fields.map((f, idx) =>
-      idx === i ? { ...f, [key]: value } : f
-    ));
+    set('fields', config.fields.map((f, idx) => idx === i ? { ...f, [key]: value } : f));
   }
 
   function moveField(i, dir) {
@@ -178,7 +167,6 @@ export default function BadgeSetup() {
     const j = i + dir;
     if (j < 0 || j >= fields.length) return;
     [fields[i], fields[j]] = [fields[j], fields[i]];
-    // Update order values to match new positions
     set('fields', fields.map((f, idx) => ({ ...f, order: idx })));
   }
 
@@ -196,26 +184,15 @@ export default function BadgeSetup() {
     }
   }
 
-  // ── Full-size preview in new tab ──────────────────────────
+  // ── Full-size preview ─────────────────────────────────────
   function handleFullSizePreview() {
-    try {
-      sessionStorage.setItem('badge-preview', JSON.stringify({
-        config,
-        orgLogoUrl,
-      }));
-    } catch {
-      // sessionStorage unavailable — open anyway, will show defaults
-    }
+    try { sessionStorage.setItem('badge-preview', JSON.stringify({ config, orgLogoUrl })); } catch {}
     window.open('/admin/badge-preview', '_blank', 'noopener');
   }
 
-  // ── Derived values ────────────────────────────────────────
-  const saveBtnClass = saveState === 'saved'
-    ? 'btn btn-sm btn-success'
-    : saveState === 'error'
-      ? 'btn btn-sm btn-danger-ghost'
-      : 'btn btn-sm btn-primary';
-
+  const saveBtnClass = saveState === 'saved' ? 'btn btn-sm btn-success'
+    : saveState === 'error' ? 'btn btn-sm btn-danger-ghost'
+    : 'btn btn-sm btn-primary';
   const saveBtnLabel = saveState === 'saving' ? 'Saving…'
     : saveState === 'saved'  ? '✓ Saved'
     : saveState === 'error'  ? '✕ Error'
@@ -226,7 +203,7 @@ export default function BadgeSetup() {
       <div className="pb-wrapper">
         <div style={{ width: '40%', minWidth: 300, background: 'white', borderRight: '1px solid var(--border)', padding: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div className="skeleton sk-title" style={{ width: '55%' }} />
-          {[...Array(7)].map((_, i) => (
+          {[...Array(8)].map((_, i) => (
             <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
               <div className="skeleton" style={{ flex: 1, height: 34, borderRadius: 6 }} />
               <div className="skeleton" style={{ width: 34, height: 34, borderRadius: 6 }} />
@@ -256,184 +233,118 @@ export default function BadgeSetup() {
 
         <div className="pb-config-scroll">
 
-          {/* ── 1. Badge Size ── */}
-          <Section title="Badge Size" icon={<SizeIcon />} isOpen={sections.size} onToggle={() => toggleSection('size')}>
-            <div className="form-group" style={{ marginBottom: 0 }}>
-              <label className="label">Preset Size</label>
-              <select
-                className="input"
-                value={currentPreset}
-                onChange={(e) => handlePreset(e.target.value)}
-              >
-                {SIZE_PRESETS.map((p) => (
-                  <option key={p.value} value={p.value}>{p.label}</option>
-                ))}
-              </select>
+          {/* ════ 1. CANVAS ════ */}
+          <Section title="Canvas" icon={<CanvasIcon />} isOpen={sections.canvas} onToggle={() => toggleSection('canvas')}>
+
+            <div className="form-row-2" style={{ marginBottom: 0 }}>
+              <MmInput label="Width"  value={config.width}  onChange={(v) => set('width',  v)} min={30}  max={300} step={1} />
+              <MmInput label="Height" value={config.height} onChange={(v) => set('height', v)} min={20}  max={300} step={1} />
             </div>
 
-            {currentPreset === 'custom' && (
-              <div className="form-row-2" style={{ marginBottom: 0 }}>
-                <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="label">Width (mm)</label>
-                  <input
-                    className="input"
-                    type="number"
-                    min={30} max={300}
-                    value={config.width}
-                    onChange={(e) => set('width', Number(e.target.value) || 85)}
-                  />
-                </div>
-                <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="label">Height (mm)</label>
-                  <input
-                    className="input"
-                    type="number"
-                    min={20} max={300}
-                    value={config.height}
-                    onChange={(e) => set('height', Number(e.target.value) || 54)}
-                  />
-                </div>
-              </div>
-            )}
-          </Section>
+            <MmInput label="Outer padding" value={config.padding} onChange={(v) => set('padding', v)} min={0} max={20} step={0.5} />
 
-          {/* ── 2. Background ── */}
-          <Section title="Background" icon={<BgIcon />} isOpen={sections.background} onToggle={() => toggleSection('background')}>
-
-            <div className="form-group" style={{ marginBottom: 0 }}>
-              <label className="label">Background Color</label>
-              <div className="color-row">
-                <input
-                  type="color"
-                  className="color-swatch"
-                  value={config.backgroundColor || '#ffffff'}
-                  onChange={(e) => set('backgroundColor', e.target.value)}
-                />
-                <input
-                  className="input"
-                  value={config.backgroundColor || ''}
-                  onChange={(e) => set('backgroundColor', e.target.value)}
-                  placeholder="#ffffff"
-                  maxLength={7}
-                />
-              </div>
-            </div>
+            <ColorRow label="Background color" value={config.backgroundColor} onChange={(v) => set('backgroundColor', v)} />
 
             <div className="form-group" style={{ marginBottom: 0 }}>
               <label className="label">Background Image</label>
               <p style={{ fontSize: 12, color: 'var(--text-light)', marginBottom: 8 }}>
-                Image overrides the background color when set.
+                Overrides background color when set.
               </p>
-
               {config.backgroundImageUrl ? (
                 <div className="bs-bg-preview">
-                  <img
-                    src={assetUrl(config.backgroundImageUrl)}
-                    alt="Badge background"
-                    onError={(e) => { e.target.style.display = 'none'; }}
-                  />
-                  <button
-                    className="btn btn-ghost btn-sm text-danger"
-                    onClick={() => set('backgroundImageUrl', '')}
-                  >
-                    Clear background image
+                  <img src={assetUrl(config.backgroundImageUrl)} alt="Badge background" onError={(e) => { e.target.style.display = 'none'; }} />
+                  <button className="btn btn-ghost btn-sm text-danger" onClick={() => set('backgroundImageUrl', '')}>
+                    Remove image
                   </button>
                 </div>
               ) : (
-                <div
-                  className="logo-drop-zone"
-                  onClick={() => bgInputRef.current?.click()}
-                >
-                  <input
-                    ref={bgInputRef}
-                    type="file"
-                    accept="image/*"
-                    onChange={handleBgUpload}
-                    style={{ display: 'none' }}
-                  />
+                <div className="logo-drop-zone" onClick={() => bgInputRef.current?.click()}>
+                  <input ref={bgInputRef} type="file" accept="image/*" onChange={handleBgUpload} style={{ display: 'none' }} />
                   {bgUploading ? (
                     <span className="logo-uploading">Uploading…</span>
                   ) : (
                     <>
                       <svg viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="1.5" width="22" height="22">
-                        <rect x="3" y="3" width="18" height="18" rx="2"/>
-                        <circle cx="8.5" cy="8.5" r="1.5"/>
+                        <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/>
                         <polyline points="21 15 16 10 5 21"/>
                       </svg>
-                      <span className="logo-drop-label">Click to upload background</span>
+                      <span className="logo-drop-label">Click to upload</span>
                       <span className="logo-drop-hint">PNG, JPG</span>
                     </>
                   )}
                 </div>
               )}
             </div>
+
           </Section>
 
-          {/* ── 3. Logo & Event Name ── */}
-          <Section title="Logo & Event Name" icon={<LogoIcon />} isOpen={sections.logo} onToggle={() => toggleSection('logo')}>
+          {/* ════ 2. HEADER ════ */}
+          <Section title="Header" icon={<HeaderIcon />} isOpen={sections.header} onToggle={() => toggleSection('header')}>
 
-            <div className="bs-toggle-row">
-              <Toggle checked={config.showLogo} onChange={(v) => set('showLogo', v)} />
-              <span className="bs-toggle-label">Show logo</span>
-            </div>
+            <MmInput label="Header height" value={config.headerHeight} onChange={(v) => set('headerHeight', v)} min={0} max={60} step={0.5} />
 
-            {config.showLogo && (
-              <div className="form-group" style={{ marginBottom: 0 }}>
-                <label className="label">Logo Position</label>
-                <div className="bs-btn-group">
-                  {['top-left', 'top-center', 'top-right'].map((pos) => (
-                    <button
-                      key={pos}
-                      className={`bs-pos-btn${config.logoPosition === pos ? ' bs-pos-btn-active' : ''}`}
-                      onClick={() => set('logoPosition', pos)}
-                    >
-                      {pos === 'top-left' ? '⬅ Left' : pos === 'top-center' ? '↔ Center' : 'Right ➡'}
-                    </button>
-                  ))}
-                </div>
-              </div>
+            <SubHeading>Divider</SubHeading>
+            <ToggleRow label="Show divider line" checked={config.showHeaderDivider} onChange={(v) => set('showHeaderDivider', v)} />
+            {config.showHeaderDivider && (
+              <ColorRow label="Divider color" value={config.headerDividerColor} onChange={(v) => set('headerDividerColor', v)} />
             )}
 
-            <div className="bs-toggle-row">
-              <Toggle checked={config.showEventName} onChange={(v) => set('showEventName', v)} />
-              <span className="bs-toggle-label">Show event name</span>
-            </div>
-          </Section>
-
-          {/* ── 4. QR Code ── */}
-          <Section title="QR Code" icon={<QrIcon />} isOpen={sections.qr} onToggle={() => toggleSection('qr')}>
-
-            <div className="bs-toggle-row">
-              <Toggle checked={config.showQrCode} onChange={(v) => set('showQrCode', v)} />
-              <span className="bs-toggle-label">Show QR code</span>
-            </div>
-
-            {config.showQrCode && (
+            <SubHeading>Logo</SubHeading>
+            <ToggleRow label="Show logo" checked={config.showLogo} onChange={(v) => set('showLogo', v)} />
+            {config.showLogo && (<>
               <div className="form-group" style={{ marginBottom: 0 }}>
-                <label className="label">QR Position</label>
-                <div className="bs-btn-group">
-                  {[
-                    { value: 'bottom-left',  label: '⬅ Bottom Left' },
-                    { value: 'center',       label: '↔ Bottom Center' },
-                    { value: 'bottom-right', label: 'Bottom Right ➡' },
-                  ].map(({ value, label }) => (
-                    <button
-                      key={value}
-                      className={`bs-pos-btn${config.qrPosition === value ? ' bs-pos-btn-active' : ''}`}
-                      onClick={() => set('qrPosition', value)}
-                    >
-                      {label}
-                    </button>
-                  ))}
+                <label className="label">Position</label>
+                <PosPicker
+                  value={config.logoPosition}
+                  onChange={(v) => set('logoPosition', v)}
+                  options={[
+                    { value: 'top-left',   label: '⬅ Left'   },
+                    { value: 'top-center', label: '↔ Center' },
+                    { value: 'top-right',  label: 'Right ➡'  },
+                  ]}
+                />
+              </div>
+              <div className="form-row-2" style={{ marginBottom: 0 }}>
+                <MmInput label="Max width"  value={config.logoMaxWidth}  onChange={(v) => set('logoMaxWidth',  v)} min={5} max={100} step={1} />
+                <MmInput label="Max height" value={config.logoMaxHeight} onChange={(v) => set('logoMaxHeight', v)} min={3} max={50}  step={1} />
+              </div>
+            </>)}
+
+            <SubHeading>Event Name</SubHeading>
+            <ToggleRow label="Show event name" checked={config.showEventName} onChange={(v) => set('showEventName', v)} />
+            {config.showEventName && (<>
+              <div className="form-row-2" style={{ marginBottom: 0 }}>
+                <MmInput label="Font size" value={config.eventNameSize} onChange={(v) => set('eventNameSize', v)} min={4} max={36} step={0.5} unit="pt" />
+                <div className="bs-mm-row">
+                  <span className="bs-mm-label">Weight</span>
+                  <select
+                    className="input"
+                    style={{ flex: 1 }}
+                    value={config.eventNameWeight ?? 600}
+                    onChange={(e) => set('eventNameWeight', Number(e.target.value))}
+                  >
+                    <option value={300}>Light</option>
+                    <option value={400}>Normal</option>
+                    <option value={500}>Medium</option>
+                    <option value={600}>Semibold</option>
+                    <option value={700}>Bold</option>
+                    <option value={800}>Extra Bold</option>
+                  </select>
                 </div>
               </div>
-            )}
+              <ColorRow label="Color" value={config.eventNameColor} onChange={(v) => set('eventNameColor', v)} />
+            </>)}
+
           </Section>
 
-          {/* ── 5. Fields ── */}
+          {/* ════ 3. FIELDS ════ */}
           <Section title="Fields" icon={<FieldsIcon />} isOpen={sections.fields} onToggle={() => toggleSection('fields')}>
 
-            {/* Column headers */}
+            <div className="form-row-2" style={{ marginBottom: 12 }}>
+              <MmInput label="Gap between fields" value={config.fieldGap}       onChange={(v) => set('fieldGap',       v)} min={0} max={15} step={0.5} />
+              <MmInput label="Vertical padding"   value={config.middlePaddingY} onChange={(v) => set('middlePaddingY', v)} min={0} max={15} step={0.5} />
+            </div>
+
             <div className="bs-fields-header">
               <span>Field (toggle to show)</span>
               <span>Size</span>
@@ -446,33 +357,22 @@ export default function BadgeSetup() {
             {(config.fields || []).map((field, i) => (
               <div key={field.fieldName} className="bs-field-row">
 
-                {/* Name cell: visible toggle + label */}
                 <div className="bs-field-name-cell">
-                  <Toggle
-                    checked={field.visible !== false}
-                    onChange={(v) => updateField(i, 'visible', v)}
-                    title="Show on badge"
-                  />
-                  <span
-                    className="bs-field-name-text"
-                    style={{ opacity: field.visible === false ? 0.4 : 1 }}
-                  >
+                  <Toggle checked={field.visible !== false} onChange={(v) => updateField(i, 'visible', v)} title="Show on badge" />
+                  <span className="bs-field-name-text" style={{ opacity: field.visible === false ? 0.4 : 1 }}>
                     {field.label || field.fieldName}
                   </span>
                 </div>
 
-                {/* Font size */}
                 <input
                   className="bs-num-input"
-                  type="number"
-                  min={4} max={36}
+                  type="number" min={4} max={72}
                   value={field.fontSize || 10}
                   onChange={(e) => updateField(i, 'fontSize', Number(e.target.value) || 10)}
                   title="Font size (pt)"
                   disabled={field.visible === false}
                 />
 
-                {/* Bold toggle */}
                 <div style={{ display: 'flex', justifyContent: 'center' }}>
                   <Toggle
                     checked={field.fontWeight === 'bold'}
@@ -481,7 +381,6 @@ export default function BadgeSetup() {
                   />
                 </div>
 
-                {/* Text color */}
                 <input
                   type="color"
                   className="color-swatch bs-field-color"
@@ -491,7 +390,6 @@ export default function BadgeSetup() {
                   disabled={field.visible === false}
                 />
 
-                {/* Alignment */}
                 <div className="bs-align-group">
                   {['left', 'center', 'right'].map((a) => (
                     <button
@@ -506,32 +404,49 @@ export default function BadgeSetup() {
                   ))}
                 </div>
 
-                {/* Reorder */}
                 <div className="field-reorder">
-                  <button
-                    className="btn-icon-sq"
-                    disabled={i === 0}
-                    onClick={() => moveField(i, -1)}
-                    title="Move up"
-                  >
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="12" height="12">
-                      <polyline points="18 15 12 9 6 15" />
-                    </svg>
+                  <button className="btn-icon-sq" disabled={i === 0} onClick={() => moveField(i, -1)} title="Move up">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="12" height="12"><polyline points="18 15 12 9 6 15" /></svg>
                   </button>
-                  <button
-                    className="btn-icon-sq"
-                    disabled={i === config.fields.length - 1}
-                    onClick={() => moveField(i, 1)}
-                    title="Move down"
-                  >
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="12" height="12">
-                      <polyline points="6 9 12 15 18 9" />
-                    </svg>
+                  <button className="btn-icon-sq" disabled={i === config.fields.length - 1} onClick={() => moveField(i, 1)} title="Move down">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="12" height="12"><polyline points="6 9 12 15 18 9" /></svg>
                   </button>
                 </div>
 
               </div>
             ))}
+
+          </Section>
+
+          {/* ════ 4. FOOTER / QR ════ */}
+          <Section title="Footer & QR Code" icon={<FooterIcon />} isOpen={sections.footer} onToggle={() => toggleSection('footer')}>
+
+            <MmInput label="Footer height" value={config.footerHeight} onChange={(v) => set('footerHeight', v)} min={0} max={60} step={0.5} />
+
+            <SubHeading>Divider</SubHeading>
+            <ToggleRow label="Show divider line" checked={config.showFooterDivider} onChange={(v) => set('showFooterDivider', v)} />
+            {config.showFooterDivider && (
+              <ColorRow label="Divider color" value={config.footerDividerColor} onChange={(v) => set('footerDividerColor', v)} />
+            )}
+
+            <SubHeading>QR Code</SubHeading>
+            <ToggleRow label="Show QR code" checked={config.showQrCode} onChange={(v) => set('showQrCode', v)} />
+            {config.showQrCode && (<>
+              <MmInput label="QR size" value={config.qrSize} onChange={(v) => set('qrSize', v)} min={8} max={50} step={0.5} />
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="label">Position</label>
+                <PosPicker
+                  value={config.qrPosition}
+                  onChange={(v) => set('qrPosition', v)}
+                  options={[
+                    { value: 'bottom-left',  label: '⬅ Left'   },
+                    { value: 'center',       label: '↔ Center' },
+                    { value: 'bottom-right', label: 'Right ➡'  },
+                  ]}
+                />
+              </div>
+            </>)}
+
           </Section>
 
         </div>{/* end pb-config-scroll */}
@@ -541,12 +456,8 @@ export default function BadgeSetup() {
       <div className="pb-preview">
 
         <p className="pb-preview-label">Live Preview</p>
+        <p className="bs-dims-label">{config.width} × {config.height} mm</p>
 
-        <p className="bs-dims-label">
-          {config.width} × {config.height} mm
-        </p>
-
-        {/* Scaled badge preview */}
         <div className="bs-preview-center">
           <div className="bs-preview-shadow">
             <BadgePrintView
@@ -558,11 +469,7 @@ export default function BadgeSetup() {
           </div>
         </div>
 
-        {/* Full-size preview button */}
-        <button
-          className="btn btn-outline btn-sm bs-fullsize-btn"
-          onClick={handleFullSizePreview}
-        >
+        <button className="btn btn-outline btn-sm bs-fullsize-btn" onClick={handleFullSizePreview}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14">
             <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
             <polyline points="15 3 21 3 21 9"/>
@@ -576,7 +483,7 @@ export default function BadgeSetup() {
           to judge font sizes at actual print dimensions.
         </p>
 
-      </div>{/* end pb-preview */}
+      </div>
 
     </div>
   );

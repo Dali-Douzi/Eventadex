@@ -17,8 +17,6 @@ const vipRegistrantSchema = new Schema(
     country:          { type: String, trim: true },
     title:            { type: String, trim: true },
     hearAbout:        { type: String, trim: true },
-    registerInterest: { type: String, trim: true },
-    sponsorType:      { type: String, trim: true },
     wingType:         { type: String, trim: true },
     customFields:     { type: Map, of: String, default: {} },
     qrCode:           { type: String, required: true, unique: true },

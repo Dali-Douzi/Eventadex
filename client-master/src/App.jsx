@@ -6,6 +6,7 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Organizations from './pages/Organizations';
 import Lookups from './pages/Lookups';
+import Visitors from './pages/Visitors';
 import NotFound from './pages/NotFound';
 
 // Wrapper forces full remount of Lookups when the type param changes,
@@ -27,6 +28,7 @@ export default function App() {
               <Route index element={<Navigate to="/dashboard" replace />} />
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/organizations" element={<Organizations />} />
+              <Route path="/visitors" element={<Visitors />} />
               <Route path="/lookups/:type" element={<LookupRoute />} />
             </Route>
           </Route>

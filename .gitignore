@@ -27,3 +27,11 @@ Thumbs.db
 .vscode/
 .idea/
 *.swp
+
+# CSV / Excel data files (visitor imports — data lives in MongoDB, not git)
+*.csv
+*.xlsx
+*.xls
+
+# Claude Code local settings
+.claude/

@@ -3,6 +3,66 @@ import api from '../api/axios';
 import AttendeeCard, { CheckInBadge, PaymentBadge } from '../components/AttendeeCard';
 import { useToast } from '../context/ToastContext';
 
+// ─── Import results modal ─────────────────────────────────────────────────────
+function ImportResultsModal({ results, onClose }) {
+  const { total, imported, updated, skipped, errors = [] } = results;
+  return (
+    <>
+      <div className="modal-overlay" onClick={onClose} />
+      <div className="modal" style={{ maxWidth: 520 }}>
+        <div className="modal-header">
+          <span className="modal-title">Import Complete</span>
+          <button className="modal-close" onClick={onClose}>×</button>
+        </div>
+        <div className="modal-body">
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
+            {[
+              { label: 'Total rows processed', value: total,    color: '#1e293b' },
+              { label: 'New registrants added', value: imported, color: '#16a34a' },
+              { label: 'Existing records updated', value: updated,  color: '#2563eb' },
+              { label: 'Rows skipped / errored', value: skipped,  color: '#dc2626' },
+            ].map(({ label, value, color }) => (
+              <div key={label} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: '12px 16px' }}>
+                <div style={{ fontSize: 24, fontWeight: 700, color }}>{value}</div>
+                <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>{label}</div>
+              </div>
+            ))}
+          </div>
+
+          {errors.length > 0 && (
+            <>
+              <p style={{ fontSize: 13, fontWeight: 600, color: '#dc2626', marginBottom: 8 }}>
+                {errors.length} row{errors.length !== 1 ? 's' : ''} had issues:
+              </p>
+              <div style={{ maxHeight: 220, overflowY: 'auto', border: '1px solid #fee2e2', borderRadius: 6, background: '#fff' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                  <thead>
+                    <tr style={{ background: '#fef2f2' }}>
+                      <th style={{ padding: '6px 10px', textAlign: 'left', color: '#991b1b', width: 60 }}>Row</th>
+                      <th style={{ padding: '6px 10px', textAlign: 'left', color: '#991b1b' }}>Reason</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {errors.map(({ row, reason }, i) => (
+                      <tr key={i} style={{ borderTop: '1px solid #fee2e2' }}>
+                        <td style={{ padding: '5px 10px', color: '#64748b', fontVariantNumeric: 'tabular-nums' }}>{row}</td>
+                        <td style={{ padding: '5px 10px', color: '#1e293b' }}>{reason}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </div>
+        <div className="modal-footer">
+          <button className="btn btn-primary" onClick={onClose}>Done</button>
+        </div>
+      </div>
+    </>
+  );
+}
+
 function fmtDate(v) {
   if (!v) return '—';
   return new Date(v).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
@@ -85,10 +145,14 @@ export default function Registrants() {
   const [search, setSearch]       = useState('');
   const [sessionFilter, setSessionFilter] = useState('');
   const [sessions, setSessions]   = useState([]);
-  const [selected, setSelected]   = useState(null); // registrant in drawer
-  const [exporting, setExporting] = useState('');   // ''|'csv'|'xlsx'|'pdf'
+  const [selected, setSelected]     = useState(null); // registrant in drawer
+  const [exporting, setExporting]   = useState('');   // ''|'csv'|'xlsx'|'pdf'
   const [exportOpen, setExportOpen] = useState(false);
-  const exportRef = useRef(null);
+  const [importing, setImporting]   = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importResults, setImportResults] = useState(null); // modal data
+  const exportRef  = useRef(null);
+  const importRef  = useRef(null);
 
   const LIMIT = 20;
 
@@ -128,16 +192,18 @@ export default function Registrants() {
     return s?.name || '—';
   }
 
-  // Close export dropdown when clicking outside
+  // Close export/import dropdowns when clicking outside
   useEffect(() => {
     function handleClick(e) {
-      if (exportRef.current && !exportRef.current.contains(e.target)) {
-        setExportOpen(false);
+      if (exportRef.current && !exportRef.current.contains(e.target)) setExportOpen(false);
+      // For import dropdown we don't have a ref, so just close on any outside click
+      if (importOpen && importRef.current && !importRef.current.contains(e.target)) {
+        setImportOpen(false);
       }
     }
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
-  }, []);
+  }, [importOpen]);
 
   // ── Export ─────────────────────────────────────────────────
   const MIME = { csv: 'text/csv', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', pdf: 'application/pdf' };
@@ -165,6 +231,48 @@ export default function Registrants() {
     }
   }
 
+  // ── Import ─────────────────────────────────────────────────
+  function handleImportClick() {
+    setImportOpen(false);
+    importRef.current?.click();
+  }
+
+  async function handleImportFile(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = ''; // reset so same file can be re-selected
+
+    setImporting(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const { data } = await api.post('/api/admin/registrants/import', fd);
+      setImportResults(data);
+      fetchRows(); // refresh table
+    } catch (err) {
+      toast(err.response?.data?.message || 'Import failed. Check the file format and try again.', 'error');
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  async function handleDownloadTemplate() {
+    setImportOpen(false);
+    try {
+      const response = await api.get('/api/admin/registrants/import-template', { responseType: 'blob' });
+      const url = URL.createObjectURL(new Blob([response.data], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      }));
+      const a = document.createElement('a');
+      a.href     = url;
+      a.download = 'import-template.xlsx';
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast('Could not download template', 'error');
+    }
+  }
+
   // ── Row click → drawer ─────────────────────────────────────
   function openDrawer(r) { setSelected(r); }
   function closeDrawer()  { setSelected(null); }
@@ -187,8 +295,51 @@ export default function Registrants() {
 
   return (
     <div>
+      {/* Hidden file input for import */}
+      <input
+        ref={importRef}
+        type="file"
+        accept=".xlsx,.xls,.csv"
+        style={{ display: 'none' }}
+        onChange={handleImportFile}
+      />
+
       <div className="page-header">
         <h1 className="page-title">Registrants</h1>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+
+        {/* ── Import dropdown ── */}
+        <div className="export-dropdown" style={{ position: 'relative' }}>
+          <button
+            className="btn btn-sm btn-outline"
+            onClick={() => setImportOpen((o) => !o)}
+            disabled={importing}
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="7 10 12 5 17 10"/>
+              <line x1="12" y1="5" x2="12" y2="15"/>
+            </svg>
+            {importing ? 'Importing…' : 'Import'}
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="11" height="11" style={{ marginLeft: 2 }}>
+              <polyline points="6 9 12 15 18 9"/>
+            </svg>
+          </button>
+          {importOpen && (
+            <div className="export-menu">
+              <button className="export-menu-item" onClick={handleImportClick}>
+                <span className="export-fmt-icon" style={{ background: '#ede9fe', color: '#6d28d9', fontWeight: 700, fontSize: 10 }}>XLS</span>
+                Import from Excel / CSV
+              </button>
+              <button className="export-menu-item" onClick={handleDownloadTemplate}>
+                <span className="export-fmt-icon" style={{ background: '#f0fdf4', color: '#15803d', fontWeight: 700, fontSize: 10 }}>TPL</span>
+                Download import template
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* ── Export dropdown ── */}
         <div className="export-dropdown" ref={exportRef}>
           <button
             className="btn btn-sm btn-outline"
@@ -222,6 +373,8 @@ export default function Registrants() {
             </div>
           )}
         </div>
+
+        </div>{/* end header button group */}
       </div>
 
       <div className="table-card">
@@ -368,6 +521,14 @@ export default function Registrants() {
           sessions={sessions}
           onClose={closeDrawer}
           onUpdate={handleUpdate}
+        />
+      )}
+
+      {/* Import results modal */}
+      {importResults && (
+        <ImportResultsModal
+          results={importResults}
+          onClose={() => setImportResults(null)}
         />
       )}
     </div>

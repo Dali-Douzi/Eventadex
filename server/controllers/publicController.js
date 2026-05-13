@@ -41,7 +41,7 @@ const {
   VipRegistrant,
   VipPageConfig,
   VipEmailTemplate,
-  Title, Country, SponsorType, HearAbout, RegisterInterest,
+  Title, Country, HearAbout,
 } = require('../models');
 
 const { sendConfirmationEmail } = require('../services/emailService');
@@ -49,8 +49,8 @@ const { sendConfirmationEmail } = require('../services/emailService');
 // Fields handled explicitly — anything else in formFields is a "custom" field
 const STANDARD_FIELD_NAMES = new Set([
   'firstName', 'lastName', 'email', 'phone', 'landline', 'mobile',
-  'gender', 'country', 'title', 'hearAbout', 'registerInterest',
-  'sponsorType', 'sessionId', 'paymentIntentId',
+  'gender', 'country', 'title', 'hearAbout',
+  'sessionId', 'paymentIntentId',
 ]);
 
 // ─── Lazy Stripe initialisation ───────────────────────────────────────────────
@@ -151,14 +151,12 @@ async function getFormConfig(req, res) {
     // Parallel: page config + lookup tables
     const [
       pageConfig,
-      titles, countries, hearAbout, registerInterest, sponsorTypes,
+      titles, countries, hearAbout,
     ] = await Promise.all([
       PageConfig.findOne({ organizationId: org._id }),
       loadLookup(Title,            org._id),
       loadLookup(Country,          org._id),
       loadLookup(HearAbout,        org._id),
-      loadLookup(RegisterInterest, org._id),
-      loadLookup(SponsorType,      org._id),
     ]);
 
     const sessions = enrichSessions(event.sessions);
@@ -180,8 +178,6 @@ async function getFormConfig(req, res) {
         titles,
         countries,
         hearAbout,
-        registerInterest,
-        sponsorTypes,
       },
     });
   } catch (err) {
@@ -336,13 +332,11 @@ async function register(req, res) {
     }
 
     // ── Resolve lookup IDs → display names ────────────────────
-    const [titleDoc, countryDoc, hearAboutDoc, regInterestDoc, sponsorDoc] =
+    const [titleDoc, countryDoc, hearAboutDoc] =
       await Promise.all([
-        resolveLookupId(Title,            body.titleId),
-        resolveLookupId(Country,          body.countryId),
-        resolveLookupId(HearAbout,        body.hearAboutId),
-        resolveLookupId(RegisterInterest, body.registerInterestId),
-        resolveLookupId(SponsorType,      body.sponsorTypeId),
+        resolveLookupId(Title,   body.titleId),
+        resolveLookupId(Country, body.countryId),
+        resolveLookupId(HearAbout, body.hearAboutId),
       ]);
 
     // ── Generate QR code ───────────────────────────────────────
@@ -364,8 +358,6 @@ async function register(req, res) {
       country:          countryDoc?.name      || undefined,
       title:            titleDoc?.name        || undefined,
       hearAbout:        hearAboutDoc?.name    || undefined,
-      registerInterest: regInterestDoc?.name  || undefined,
-      sponsorType:      sponsorDoc?.name      || undefined,
       customFields:     collectCustomFields(pageConfig?.formFields, body),
       qrCode:           qrCodeValue,
       paymentStatus,
@@ -379,14 +371,16 @@ async function register(req, res) {
     );
 
     // ── Send confirmation email (fire and forget) ──────────────
+    const baseUrl = process.env.CLIENT_USER_URL || '';
     sendConfirmationEmail({
-      registrant:    registrant.toObject(),
-      event:         { name: event.name },
-      session:       { name: session.name, date: session.date },
-      organization:  { name: org.name },
+      registrant:      registrant.toObject(),
+      event:           { name: event.name },
+      session:         { name: session.name, date: session.date },
+      organization:    { name: org.name },
       emailTemplate,
-      qrCodeDataUrl: qrCodeImage,
-      logoUrl:       pageConfig?.logoUrl || null,
+      qrCodeDataUrl:   qrCodeImage,
+      logoUrl:         pageConfig?.logoUrl || null,
+      confirmationUrl: `${baseUrl}/${org.slug}/confirmation/${registrant._id}`,
     }).catch((emailErr) => {
       console.error('[public] Confirmation email failed:', emailErr.message);
     });
@@ -476,14 +470,12 @@ async function getVipFormConfig(req, res) {
 
     const [
       vipPageConfig,
-      titles, countries, hearAbout, registerInterest, sponsorTypes,
+      titles, countries, hearAbout,
     ] = await Promise.all([
       VipPageConfig.findOne({ organizationId: org._id }),
       loadLookup(Title,            org._id),
       loadLookup(Country,          org._id),
       loadLookup(HearAbout,        org._id),
-      loadLookup(RegisterInterest, org._id),
-      loadLookup(SponsorType,      org._id),
     ]);
 
     const sessions = enrichSessions(event.sessions);
@@ -498,7 +490,7 @@ async function getVipFormConfig(req, res) {
       },
       pageConfig: vipPageConfig || { primaryColor: '#1a1a2e', secondaryColor: '#e2b96f' },
       sessions,
-      lookups: { titles, countries, hearAbout, registerInterest, sponsorTypes },
+      lookups: { titles, countries, hearAbout },
     });
   } catch (err) {
     console.error('[public] getVipFormConfig error:', err);
@@ -551,13 +543,11 @@ async function registerVip(req, res) {
       return res.status(400).json({ error: 'Session is full — no spots remaining' });
     }
 
-    const [titleDoc, countryDoc, hearAboutDoc, regInterestDoc, sponsorDoc] =
+    const [titleDoc, countryDoc, hearAboutDoc] =
       await Promise.all([
-        resolveLookupId(Title,            body.titleId),
-        resolveLookupId(Country,          body.countryId),
-        resolveLookupId(HearAbout,        body.hearAboutId),
-        resolveLookupId(RegisterInterest, body.registerInterestId),
-        resolveLookupId(SponsorType,      body.sponsorTypeId),
+        resolveLookupId(Title,     body.titleId),
+        resolveLookupId(Country,   body.countryId),
+        resolveLookupId(HearAbout, body.hearAboutId),
       ]);
 
     const qrCodeValue = crypto.randomUUID();
@@ -577,8 +567,6 @@ async function registerVip(req, res) {
       country:          countryDoc?.name      || undefined,
       title:            titleDoc?.name        || undefined,
       hearAbout:        hearAboutDoc?.name    || undefined,
-      registerInterest: regInterestDoc?.name  || undefined,
-      sponsorType:      sponsorDoc?.name      || undefined,
       customFields:     collectCustomFields(vipPageConfig?.formFields, body),
       qrCode:           qrCodeValue,
     });
@@ -588,14 +576,16 @@ async function registerVip(req, res) {
       { $inc: { 'sessions.$.registered': 1 } }
     );
 
+    const baseUrl = process.env.CLIENT_USER_URL || '';
     sendConfirmationEmail({
-      registrant:    registrant.toObject(),
-      event:         { name: event.name },
-      session:       { name: session.name, date: session.date },
-      organization:  { name: org.name },
+      registrant:      registrant.toObject(),
+      event:           { name: event.name },
+      session:         { name: session.name, date: session.date },
+      organization:    { name: org.name },
       emailTemplate,
-      qrCodeDataUrl: qrCodeImage,
-      logoUrl:       vipPageConfig?.logoUrl || null,
+      qrCodeDataUrl:   qrCodeImage,
+      logoUrl:         vipPageConfig?.logoUrl || null,
+      confirmationUrl: `${baseUrl}/${org.slug}/vip/confirmation/${registrant._id}`,
     }).catch((emailErr) => {
       console.error('[public] VIP confirmation email failed:', emailErr.message);
     });

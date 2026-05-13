@@ -7,9 +7,7 @@ import Modal from '../components/Modal';
 const TYPE_CONFIG = {
   titles:              { apiType: 'Title',            label: 'Titles',            singular: 'Title' },
   countries:           { apiType: 'Country',          label: 'Countries',         singular: 'Country' },
-  'sponsor-types':     { apiType: 'SponsorType',      label: 'Sponsor Types',     singular: 'Sponsor Type' },
   'hear-about':        { apiType: 'HearAbout',        label: 'Hear About',        singular: 'Hear About' },
-  'register-interest': { apiType: 'RegisterInterest', label: 'Register Interest', singular: 'Register Interest' },
 };
 
 function fmtDate(str) {

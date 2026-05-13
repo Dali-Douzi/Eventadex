@@ -46,8 +46,6 @@ const OPTIONAL_FIELDS = [
   { fieldName: 'country',          label: 'Country',                     type: 'select',   options: [] },
   { fieldName: 'title',            label: 'Title / Honorific',           type: 'select',   options: [] },
   { fieldName: 'hearAbout',        label: 'How did you hear about us?',  type: 'select',   options: [] },
-  { fieldName: 'registerInterest', label: 'Area of Interest',            type: 'select',   options: [] },
-  { fieldName: 'sponsorType',      label: 'Sponsor Type',                type: 'select',   options: [] },
 ];
 
 function normalizeFields(saved) {

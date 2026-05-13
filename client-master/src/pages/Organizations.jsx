@@ -130,7 +130,9 @@ export default function Organizations() {
 
   const [submitting, setSubmitting] = useState(false);
 
-  // Close dropdown on outside click
+  const [exporting, setExporting] = useState('');
+
+  // Close dropdowns on outside click
   useEffect(() => {
     const handler = () => setDropdownId(null);
     document.addEventListener('click', handler);
@@ -153,6 +155,27 @@ export default function Organizations() {
   }, [page, search]);
 
   useEffect(() => { fetchOrgs(page, search); }, [page, search]);
+
+  // ── Export ───────────────────────────────────────────────
+  const MIME = { csv: 'text/csv', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', pdf: 'application/pdf' };
+
+  async function handleExport(fmt) {
+    setExportOpen(false);
+    setExporting(fmt);
+    try {
+      const response = await api.get(`/api/master/organizations/export?format=${fmt}`, { responseType: 'blob' });
+      const url = URL.createObjectURL(new Blob([response.data], { type: MIME[fmt] }));
+      const a   = document.createElement('a');
+      a.href     = url;
+      a.download = `organizations-${Date.now()}.${fmt}`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      console.error('Export failed');
+    } finally {
+      setExporting('');
+    }
+  }
 
   // ── Add ──────────────────────────────────────────────────
   async function handleAdd(e) {
@@ -344,6 +367,8 @@ export default function Organizations() {
         loading={loading}
         onAdd={() => { setAddForm(EMPTY_ADD); setAddError(''); setAddOpen(true); }}
         addLabel="+ Add Organization"
+        onExport={handleExport}
+        exporting={exporting}
       />
 
       {/* ── Add Modal ── */}

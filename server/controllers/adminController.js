@@ -1,11 +1,12 @@
 const mongoose = require('mongoose');
+const crypto   = require('crypto');
 const path     = require('path');
 const ExcelJS  = require('exceljs');
 const PDFDocument = require('pdfkit');
 const {
   Organization, Event, PageConfig, EmailTemplate, Registrant, BadgeConfig,
   VipRegistrant, VipPageConfig, VipEmailTemplate,
-  Title, Country, SponsorType, HearAbout, RegisterInterest,
+  Title, Country, HearAbout,
 } = require('../models');
 const { sendTestEmail: sendTestEmailService } = require('../services/emailService');
 const { uploadToCloudinary } = require('../config/cloudinary');
@@ -18,12 +19,12 @@ function escapeRegex(str) {
 // Standard field names — anything outside this set is a custom field
 const STANDARD_FIELD_NAMES = new Set([
   'firstName', 'lastName', 'email', 'phone', 'landline', 'mobile',
-  'gender', 'country', 'title', 'hearAbout', 'registerInterest', 'sponsorType',
+  'gender', 'country', 'title', 'hearAbout',
 ]);
 
 // ─── Lookup type → model ─────────────────────────────────────────────────────
 
-const LOOKUP_MODELS = { Title, Country, SponsorType, HearAbout, RegisterInterest };
+const LOOKUP_MODELS = { Title, Country, HearAbout };
 const LOOKUP_TYPES  = Object.keys(LOOKUP_MODELS);
 
 function getLookupModel(type) {
@@ -453,9 +454,6 @@ function buildCSV(registrants, pageConfig) {
     { label: 'Country',           key: 'country' },
     { label: 'Title',             key: 'title' },
     { label: 'Hear About',        key: 'hearAbout' },
-    { label: 'Register Interest', key: 'registerInterest' },
-    { label: 'Sponsor Type',      key: 'sponsorType' },
-    { label: 'Wing Type',         key: 'wingType' },
     { label: 'Payment Status',    key: 'paymentStatus' },
     { label: 'Checked In',        key: (r) => (r.checkedIn ? 'Yes' : 'No') },
     { label: 'Checked In At',     key: (r) => (r.checkedInAt  ? new Date(r.checkedInAt).toISOString()  : '') },
@@ -500,9 +498,6 @@ async function buildExcel(registrants, pageConfig, sheetName = 'Registrants') {
     { label: 'Country',           key: 'country' },
     { label: 'Title',             key: 'title' },
     { label: 'Hear About',        key: 'hearAbout' },
-    { label: 'Register Interest', key: 'registerInterest' },
-    { label: 'Sponsor Type',      key: 'sponsorType' },
-    { label: 'Wing Type',         key: 'wingType' },
     { label: 'Payment Status',    key: 'paymentStatus' },
     { label: 'Checked In',        key: (r) => (r.checkedIn  ? 'Yes' : 'No') },
     { label: 'Checked In At',     key: (r) => (r.checkedInAt  ? new Date(r.checkedInAt).toISOString()  : '') },
@@ -876,8 +871,7 @@ const DEFAULT_BADGE_FIELDS = [
   { fieldName: 'firstName',   label: 'First Name',     visible: false, fontSize: 13, fontWeight: 'normal', textColor: '#0f172a', align: 'center', order: 1 },
   { fieldName: 'lastName',    label: 'Last Name',      visible: false, fontSize: 13, fontWeight: 'normal', textColor: '#0f172a', align: 'center', order: 2 },
   { fieldName: 'title',       label: 'Title (Mr/Mrs)', visible: true,  fontSize: 9,  fontWeight: 'normal', textColor: '#475569', align: 'center', order: 3 },
-  { fieldName: 'sponsorType', label: 'Job Title',      visible: false, fontSize: 9,  fontWeight: 'normal', textColor: '#475569', align: 'center', order: 4 },
-  { fieldName: 'sessionName', label: 'Session',        visible: true,  fontSize: 8,  fontWeight: 'normal', textColor: '#64748b', align: 'center', order: 5 },
+  { fieldName: 'sessionName', label: 'Session',        visible: true,  fontSize: 8,  fontWeight: 'normal', textColor: '#64748b', align: 'center', order: 4 },
   { fieldName: 'country',     label: 'Country',        visible: false, fontSize: 8,  fontWeight: 'normal', textColor: '#64748b', align: 'center', order: 6 },
 ];
 
@@ -1146,6 +1140,278 @@ async function checkOutVip(req, res) {
   }
 }
 
+// ─── 11. Registrant import ────────────────────────────────────────────────────
+
+/**
+ * Flexible column header → field mapping.
+ * Keys are canonical field names; values are arrays of recognised aliases
+ * (all lowercase — headers are lowercased before lookup).
+ */
+const IMPORT_COLUMN_ALIASES = {
+  firstName:     ['first name', 'firstname', 'first_name', 'given name', 'givenname'],
+  lastName:      ['last name', 'lastname', 'last_name', 'surname', 'family name', 'familyname'],
+  email:         ['email', 'email address', 'e-mail', 'emailaddress', 'email_address'],
+  phone:         ['phone', 'phone number', 'telephone', 'tel', 'phonenumber', 'phone_number'],
+  mobile:        ['mobile', 'mobile number', 'cell', 'cellphone', 'mobilenumber', 'mobile_number'],
+  landline:      ['landline', 'landline number', 'fixed line', 'fixedline', 'landline_number'],
+  gender:        ['gender', 'sex'],
+  country:       ['country', 'country name', 'nationality', 'countryname', 'country_name'],
+  title:         ['title', 'salutation', 'honorific', 'mr/mrs', 'prefix'],
+  hearAbout:     ['hear about', 'heard about', 'how did you hear', 'source', 'hearabout', 'hear_about'],
+  wingType:      ['wing type', 'wing', 'category', 'wingtype', 'wing_type'],
+  sessionName:   ['session', 'session name', 'track', 'sessionname', 'session_name'],
+  checkedIn:     ['checked in', 'checkedin', 'check-in', 'check in status', 'checkin', 'check_in'],
+  paymentStatus: ['payment', 'payment status', 'paymentstatus', 'payment_status'],
+  qrCode:        ['qr code', 'qr', 'barcode', 'badge code', 'qrcode', 'qr_code'],
+};
+
+// Build reverse map: "first name" → "firstName", etc.
+const HEADER_TO_FIELD = {};
+for (const [field, aliases] of Object.entries(IMPORT_COLUMN_ALIASES)) {
+  HEADER_TO_FIELD[field.toLowerCase()] = field;
+  for (const alias of aliases) HEADER_TO_FIELD[alias] = field;
+}
+
+function cellStr(row, colNum) {
+  if (!colNum) return '';
+  const v = row.getCell(colNum).value;
+  if (v === null || v === undefined) return '';
+  // ExcelJS may give RichText objects or Date objects
+  if (typeof v === 'object' && v.text) return String(v.text).trim();
+  if (v instanceof Date)              return v.toISOString().slice(0, 10);
+  return String(v).trim();
+}
+
+async function importRegistrants(req, res) {
+  try {
+    const oId = orgId(req);
+
+    if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
+
+    // ── Load event ────────────────────────────────────────────
+    const event = await Event.findOne({ organizationId: oId }).lean();
+    if (!event) return res.status(404).json({ message: 'No event found for this organisation' });
+
+    // ── Parse workbook ────────────────────────────────────────
+    const workbook = new ExcelJS.Workbook();
+    try {
+      const mimetype = req.file.mimetype;
+      if (mimetype === 'text/csv' || mimetype === 'application/csv'
+          || /\.csv$/i.test(req.file.originalname)) {
+        await workbook.csv.load(req.file.buffer);
+      } else {
+        await workbook.xlsx.load(req.file.buffer);
+      }
+    } catch {
+      return res.status(400).json({ message: 'Could not parse file — make sure it is a valid .xlsx or .csv' });
+    }
+
+    const sheet = workbook.worksheets[0];
+    if (!sheet || sheet.rowCount < 2) {
+      return res.status(400).json({ message: 'Spreadsheet is empty or has no data rows' });
+    }
+
+    // ── Map header row → column numbers ───────────────────────
+    const headerRow = sheet.getRow(1);
+    const colMap    = {};   // fieldName → colNumber
+    const colNames  = {};   // colNumber → raw header string (for custom fields)
+
+    headerRow.eachCell({ includeEmpty: false }, (cell, colNum) => {
+      const raw   = (cell.value?.toString() || '').trim();
+      const lower = raw.toLowerCase();
+      colNames[colNum] = raw;
+      const field = HEADER_TO_FIELD[lower];
+      if (field && !colMap[field]) colMap[field] = colNum;
+    });
+
+    // ── Session name → _id map ────────────────────────────────
+    const sessionMap = {};
+    (event.sessions || []).forEach((s) => {
+      sessionMap[s.name.toLowerCase().trim()] = s._id;
+    });
+
+    // ── Process data rows ─────────────────────────────────────
+    const results = { total: 0, imported: 0, updated: 0, skipped: 0, errors: [] };
+
+    for (let rowNum = 2; rowNum <= sheet.rowCount; rowNum++) {
+      const row = sheet.getRow(rowNum);
+
+      // Skip visually blank rows
+      let hasContent = false;
+      row.eachCell({ includeEmpty: false }, () => { hasContent = true; });
+      if (!hasContent) continue;
+
+      results.total++;
+
+      const get = (field) => cellStr(row, colMap[field]);
+
+      // ── Required fields ───────────────────────────────────
+      const firstName = get('firstName');
+      const lastName  = get('lastName');
+      const email     = get('email').toLowerCase();
+
+      if (!firstName) {
+        results.errors.push({ row: rowNum, reason: 'Missing First Name' });
+        results.skipped++;
+        continue;
+      }
+      if (!lastName) {
+        results.errors.push({ row: rowNum, reason: 'Missing Last Name' });
+        results.skipped++;
+        continue;
+      }
+      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        results.errors.push({ row: rowNum, reason: `Invalid or missing email: "${email}"` });
+        results.skipped++;
+        continue;
+      }
+
+      // ── Optional fields ───────────────────────────────────
+      const sessionName   = get('sessionName');
+      const rawPayment    = get('paymentStatus').toLowerCase();
+      const rawCheckedIn  = get('checkedIn').toLowerCase();
+      const existingQr    = get('qrCode');
+
+      const sessionId = sessionName
+        ? (sessionMap[sessionName.toLowerCase()] || undefined)
+        : undefined;
+
+      const paymentStatus = ['free', 'pending', 'paid'].includes(rawPayment)
+        ? rawPayment : 'free';
+
+      const checkedIn = ['true', '1', 'yes', 'y', 'checked in'].includes(rawCheckedIn);
+
+      // ── Custom fields (any unrecognised column) ───────────
+      const customFields = {};
+      row.eachCell({ includeEmpty: false }, (cell, colNum) => {
+        // Skip columns already mapped to standard fields
+        const isStandard = Object.values(colMap).includes(colNum);
+        if (!isStandard && colNames[colNum]) {
+          const v = cellStr(row, colNum);
+          if (v) customFields[colNames[colNum]] = v;
+        }
+      });
+
+      // ── Build update doc ──────────────────────────────────
+      const doc = {};
+      if (firstName)                   doc.firstName     = firstName;
+      if (lastName)                    doc.lastName      = lastName;
+      if (get('phone'))                doc.phone         = get('phone');
+      if (get('mobile'))               doc.mobile        = get('mobile');
+      if (get('landline'))             doc.landline      = get('landline');
+      if (get('gender'))               doc.gender        = get('gender');
+      if (get('country'))              doc.country       = get('country');
+      if (get('title'))                doc.title         = get('title');
+      if (get('hearAbout'))            doc.hearAbout     = get('hearAbout');
+      if (get('wingType'))             doc.wingType      = get('wingType');
+      if (sessionId)                   doc.sessionId     = sessionId;
+      if (paymentStatus !== 'free' || rawPayment) doc.paymentStatus = paymentStatus;
+      if (checkedIn)                   doc.checkedIn     = true;
+      if (checkedIn && !doc.checkedInAt) doc.checkedInAt = new Date();
+      if (Object.keys(customFields).length) doc.customFields = customFields;
+
+      try {
+        const existing = await Registrant.findOne({ organizationId: oId, eventId: event._id, email }).lean();
+
+        if (existing) {
+          await Registrant.updateOne({ _id: existing._id }, { $set: doc });
+          results.updated++;
+        } else {
+          await Registrant.create({
+            ...doc,
+            email,
+            organizationId: oId,
+            eventId:        event._id,
+            qrCode:         existingQr || crypto.randomUUID(),
+            paymentStatus,
+          });
+          results.imported++;
+        }
+      } catch (err) {
+        const msg = err.code === 11000
+          ? 'Duplicate QR code — a new one will be assigned on retry'
+          : err.message;
+        results.errors.push({ row: rowNum, reason: msg });
+        results.skipped++;
+      }
+    }
+
+    res.json(results);
+  } catch (err) {
+    res.status(500).json({ message: 'Import failed', error: err.message });
+  }
+}
+
+/**
+ * Generate and download a blank import template (.xlsx) with
+ * column headers, a brief description row, and two example rows.
+ */
+async function downloadImportTemplate(req, res) {
+  try {
+    const wb  = new ExcelJS.Workbook();
+    const ws  = wb.addWorksheet('Registrants');
+
+    const COLS = [
+      { header: 'First Name',     key: 'firstName',     note: 'Required' },
+      { header: 'Last Name',      key: 'lastName',      note: 'Required' },
+      { header: 'Email',          key: 'email',         note: 'Required — must be unique per event' },
+      { header: 'Phone',          key: 'phone',         note: 'Optional' },
+      { header: 'Mobile',         key: 'mobile',        note: 'Optional' },
+      { header: 'Landline',       key: 'landline',      note: 'Optional' },
+      { header: 'Gender',         key: 'gender',        note: 'Optional' },
+      { header: 'Country',        key: 'country',       note: 'Optional' },
+      { header: 'Title',          key: 'title',         note: 'Optional — Mr, Mrs, Dr, etc.' },
+      { header: 'Session',        key: 'session',       note: 'Optional — must match a session name exactly' },
+      { header: 'Hear About',     key: 'hearAbout',     note: 'Optional' },
+      { header: 'Checked In',     key: 'checkedIn',     note: 'Optional — yes / no' },
+      { header: 'Payment Status', key: 'paymentStatus', note: 'Optional — free / pending / paid (default: free)' },
+      { header: 'QR Code',        key: 'qrCode',        note: 'Optional — leave blank to auto-generate' },
+    ];
+
+    // ── Column widths + header row ─────────────────────────
+    ws.columns = COLS.map((c) => ({ header: c.header, key: c.key, width: 22 }));
+
+    // Style header row
+    const headerRow = ws.getRow(1);
+    headerRow.font      = { bold: true, size: 11, color: { argb: 'FFFFFFFF' } };
+    headerRow.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2563EB' } };
+    headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
+    headerRow.height    = 22;
+    headerRow.commit();
+
+    // ── Notes row (row 2, greyed out) ─────────────────────
+    const noteRow = ws.addRow(COLS.map((c) => c.note));
+    noteRow.font      = { italic: true, size: 9, color: { argb: 'FF94A3B8' } };
+    noteRow.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
+    noteRow.alignment = { horizontal: 'center' };
+    noteRow.height    = 16;
+    noteRow.commit();
+
+    // ── Two example rows (row 3 & 4) ──────────────────────
+    const examples = [
+      ['Jane', 'Smith', 'jane.smith@example.com', '+1-555-0100', '', '', 'Female', 'United States', 'Ms.', 'Morning Session', 'Word of Mouth / Friend or Colleague', 'no',  'free',    ''],
+      ['Ahmed', 'Al-Rashid', 'ahmed@example.com', '+966-50-0000001', '', '', 'Male', 'Saudi Arabia', 'Mr.', 'Afternoon Session', 'Social Media', 'yes', 'paid', ''],
+    ];
+    for (const ex of examples) {
+      const r = ws.addRow(ex);
+      r.font      = { size: 10 };
+      r.alignment = { vertical: 'middle' };
+      r.height    = 18;
+      r.commit();
+    }
+
+    // ── Freeze header + notes rows ─────────────────────────
+    ws.views = [{ state: 'frozen', ySplit: 2 }];
+
+    const buf = await wb.xlsx.writeBuffer();
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename="import-template.xlsx"');
+    res.send(buf);
+  } catch (err) {
+    res.status(500).json({ message: 'Could not generate template', error: err.message });
+  }
+}
+
 module.exports = {
   getEvent, updateEvent, addSession, updateSession, deleteSession,
   getPageConfig, updatePageConfig, uploadLogo, uploadPageBanner, uploadVipPageBanner,
@@ -1158,4 +1424,6 @@ module.exports = {
   listVipRegistrants, exportVipRegistrants, searchVipRegistrant, checkInVip, checkOutVip,
   getLookups,
   getDashboardStats,
+  importRegistrants,
+  downloadImportTemplate,
 };
