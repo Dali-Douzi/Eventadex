@@ -72,17 +72,17 @@ services:
       - key: CLIENT_MASTER_URL
         fromService:
           name: eventadex-master
-          type: static
+          type: web
           property: deployedURL
       - key: CLIENT_ADMIN_URL
         fromService:
           name: eventadex-admin
-          type: static
+          type: web
           property: deployedURL
       - key: CLIENT_USER_URL
         fromService:
           name: eventadex-user
-          type: static
+          type: web
           property: deployedURL
 
       # ── Public server URL (used in emails) ───────────────────
@@ -93,7 +93,8 @@ services:
           property: deployedURL
 
   # ── 2. Platform Admin Dashboard (client-master) ──────────────────────────────
-  - type: static
+  - type: web
+    env: static
     name: eventadex-master
     rootDir: client-master
     buildCommand: npm install && npm run build
@@ -111,7 +112,8 @@ services:
         destination: /index.html
 
   # ── 3. Event Organiser Dashboard (client-admin) ──────────────────────────────
-  - type: static
+  - type: web
+    env: static
     name: eventadex-admin
     rootDir: client-admin
     buildCommand: npm install && npm run build
@@ -126,7 +128,7 @@ services:
       - key: VITE_USER_APP_URL
         fromService:
           name: eventadex-user
-          type: static
+          type: web
           property: deployedURL
     routes:
       - type: rewrite
@@ -134,7 +136,8 @@ services:
         destination: /index.html
 
   # ── 4. Public Registration App (client-user) ─────────────────────────────────
-  - type: static
+  - type: web
+    env: static
     name: eventadex-user
     rootDir: client-user
     buildCommand: npm install && npm run build
