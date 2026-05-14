@@ -33,7 +33,10 @@
 /* ── Reset ────────────────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+html { height: 100%; }
+
 body {
+  min-height: 100%;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
   background: var(--bg);
   color: var(--text-dark);
@@ -51,6 +54,19 @@ input, select, textarea { font-family: inherit; font-size: inherit; }
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+  align-items: center;
+  padding: 64px 20px 40px;
+}
+
+/* ── Form dock ────────────────────────────────────────────────────────────── */
+.form-dock {
+  width: 100%;
+  max-width: 680px;
+  display: flex;
+  flex-direction: column;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.18);
 }
 
 /* ── Header ───────────────────────────────────────────────────────────────── */
@@ -107,32 +123,22 @@ input, select, textarea { font-family: inherit; font-size: inherit; }
 }
 
 @media (max-width: 540px) {
+  .reg-page { padding: 20px 12px; }
+  .form-dock { border-radius: 12px; }
   .reg-header {
+    padding: 20px;
     flex-direction: column;
     align-items: center;
-    padding: 24px 20px;
     text-align: center;
   }
   .reg-header-info { text-align: center; }
   .reg-header-logo-placeholder { margin: 0 auto; }
 }
 
-/* ── Body ─────────────────────────────────────────────────────────────────── */
-.reg-body {
-  flex: 1;
-  padding: 32px 16px 48px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
 /* ── Form card ────────────────────────────────────────────────────────────── */
 .reg-card {
   background: var(--white);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
   width: 100%;
-  max-width: 600px;
   overflow: hidden;
 }
 
@@ -617,15 +623,15 @@ select.field-input {
 
 /* ── Footer ───────────────────────────────────────────────────────────────── */
 .reg-footer {
-  background: #f8fafc;
-  border-top: 1px solid var(--border);
-  padding: 20px 16px;
+  background: transparent;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
   text-align: center;
 }
 
 .reg-footer-text {
   font-size: 13px;
   color: var(--text-light);
+  padding: 20px 16px 0;
   margin-bottom: 8px;
 }
 
@@ -634,6 +640,7 @@ select.field-input {
   gap: 16px;
   justify-content: center;
   flex-wrap: wrap;
+  padding: 12px 16px 16px;
 }
 
 .reg-footer-link {
@@ -837,9 +844,9 @@ select.field-input {
 
 /* ── Mobile global ────────────────────────────────────────────────────────── */
 @media (max-width: 480px) {
-  /* Registration card: flush edges on small phones */
-  .reg-body { padding: 16px 0 40px; }
-  .reg-card  { border-radius: 0; box-shadow: none; }
+  /* Small phones: remove dock padding */
+  .reg-page { padding: 12px 8px; }
+  .form-dock { border-radius: 10px; }
 
   /* Step nav: stack buttons vertically */
   .step-nav {
@@ -858,122 +865,115 @@ select.field-input {
   .conf-page { padding: 0 0 40px; }
 }
 
-/* ─── VIP dark theme ──────────────────────────────────────────────────────────
-   Applied via body.classList.add('vip-mode') in RegistrationForm / Confirmation
-   when the VIP route is active.
-   ─────────────────────────────────────────────────────────────────────────── */
-body.vip-mode {
+/* ─── VIP dark theme ──────────────────────────────────────────────────────── */
+.reg-page.vip-mode {
   background: #0f0f1a;
 }
 
-body.vip-mode .reg-page {
-  background: #0f0f1a;
-}
-
-body.vip-mode .reg-header {
+.reg-page.vip-mode .reg-header {
   background: var(--primary-color, #1a1a2e);
   border-bottom: 2px solid var(--secondary-color, #e2b96f);
 }
 
-body.vip-mode .reg-header-title,
-body.vip-mode .reg-header-subtitle,
-body.vip-mode .reg-header-location {
+.reg-page.vip-mode .reg-header-title,
+.reg-page.vip-mode .reg-header-subtitle,
+.reg-page.vip-mode .reg-header-location {
   color: var(--secondary-color, #e2b96f);
 }
 
-body.vip-mode .reg-card {
+.reg-page.vip-mode .reg-card {
   background:  #1a1a2e;
   border:      1px solid #2d2d4a;
   box-shadow:  0 8px 32px rgba(0, 0, 0, 0.4);
 }
 
-body.vip-mode .step-heading {
+.reg-page.vip-mode .step-heading {
   color: var(--secondary-color, #e2b96f);
 }
 
-body.vip-mode .field-label,
-body.vip-mode .field-input,
-body.vip-mode .step-content p {
+.reg-page.vip-mode .field-label,
+.reg-page.vip-mode .field-input,
+.reg-page.vip-mode .step-content p {
   color: #c8c8e0;
 }
 
-body.vip-mode .field-input {
+.reg-page.vip-mode .field-input {
   background:    #12122a;
   border-color:  #3a3a5a;
   color:         #e8e8f0;
 }
 
-body.vip-mode .field-input:focus {
+.reg-page.vip-mode .field-input:focus {
   border-color: var(--secondary-color, #e2b96f);
   box-shadow:   0 0 0 3px rgba(226, 185, 111, 0.15);
 }
 
-body.vip-mode .session-card {
+.reg-page.vip-mode .session-card {
   background:   #12122a;
   border-color: #3a3a5a;
   color:        #c8c8e0;
 }
 
-body.vip-mode .session-card:hover:not(.session-full) {
+.reg-page.vip-mode .session-card:hover:not(.session-full) {
   border-color: var(--secondary-color, #e2b96f);
 }
 
-body.vip-mode .session-selected {
+.reg-page.vip-mode .session-selected {
   border-color: var(--secondary-color, #e2b96f) !important;
   background:   #1e1a30 !important;
 }
 
-body.vip-mode .session-name { color: #e8e8f0; }
-body.vip-mode .session-date { color: #9999bb; }
+.reg-page.vip-mode .session-name { color: #e8e8f0; }
+.reg-page.vip-mode .session-date { color: #9999bb; }
 
-body.vip-mode .btn-primary,
-body.vip-mode .btn-success {
+.reg-page.vip-mode .btn-primary,
+.reg-page.vip-mode .btn-success {
   background:   var(--secondary-color, #e2b96f);
   color:        #0f0f1a;
   border-color: var(--secondary-color, #e2b96f);
   font-weight:  700;
 }
 
-body.vip-mode .btn-primary:hover,
-body.vip-mode .btn-success:hover {
+.reg-page.vip-mode .btn-primary:hover,
+.reg-page.vip-mode .btn-success:hover {
   filter: brightness(1.1);
 }
 
-body.vip-mode .btn-outline {
+.reg-page.vip-mode .btn-outline {
   border-color: #3a3a5a;
   color:        #c8c8e0;
 }
 
-body.vip-mode .btn-outline:hover {
+.reg-page.vip-mode .btn-outline:hover {
   border-color: var(--secondary-color, #e2b96f);
   color:        var(--secondary-color, #e2b96f);
 }
 
-body.vip-mode .step-indicator-wrap {
+.reg-page.vip-mode .step-indicator-wrap {
   background: #12122a;
   border-bottom: 1px solid #2d2d4a;
 }
 
-body.vip-mode .step-dot { background: #3a3a5a; }
-body.vip-mode .step-dot.active { background: var(--secondary-color, #e2b96f); }
-body.vip-mode .step-dot.done   { background: var(--secondary-color, #e2b96f); }
-body.vip-mode .step-label      { color: #9999bb; }
-body.vip-mode .step-label.active { color: var(--secondary-color, #e2b96f); }
+.reg-page.vip-mode .step-dot { background: #3a3a5a; }
+.reg-page.vip-mode .step-dot.active { background: var(--secondary-color, #e2b96f); }
+.reg-page.vip-mode .step-dot.done   { background: var(--secondary-color, #e2b96f); }
+.reg-page.vip-mode .step-label      { color: #9999bb; }
+.reg-page.vip-mode .step-label.active { color: var(--secondary-color, #e2b96f); }
 
-body.vip-mode .review-section-title { color: var(--secondary-color, #e2b96f); }
-body.vip-mode .review-field-label   { color: #9999bb; }
-body.vip-mode .review-field-value   { color: #e8e8f0; }
+.reg-page.vip-mode .review-section-title { color: var(--secondary-color, #e2b96f); }
+.reg-page.vip-mode .review-field-label   { color: #9999bb; }
+.reg-page.vip-mode .review-field-value   { color: #e8e8f0; }
 
 /* VIP confirmation page */
-body.vip-mode .conf-page  { background: #0f0f1a; }
-body.vip-mode .conf-card  { background: #1a1a2e; border: 1px solid #2d2d4a; }
-body.vip-mode .conf-header { background: var(--primary-color, #1a1a2e); border-bottom: 2px solid var(--secondary-color, #e2b96f); }
-body.vip-mode .conf-header-title { color: var(--secondary-color, #e2b96f); }
-body.vip-mode .conf-header-sub   { color: #c8c8e0; }
-body.vip-mode .conf-info-title   { color: var(--secondary-color, #e2b96f); }
-body.vip-mode .conf-info-label   { color: #9999bb; }
-body.vip-mode .conf-info-value   { color: #e8e8f0; }
-body.vip-mode .conf-email-note   { background: #12122a; border-color: #2d2d4a; color: #c8c8e0; }
+.reg-page.vip-mode .conf-page  { background: #0f0f1a; }
+.reg-page.vip-mode .conf-card  { background: #1a1a2e; border: 1px solid #2d2d4a; }
+.reg-page.vip-mode .conf-header { background: var(--primary-color, #1a1a2e); border-bottom: 2px solid var(--secondary-color, #e2b96f); }
+.reg-page.vip-mode .conf-header-title { color: var(--secondary-color, #e2b96f); }
+.reg-page.vip-mode .conf-header-sub   { color: #c8c8e0; }
+.reg-page.vip-mode .conf-info-title   { color: var(--secondary-color, #e2b96f); }
+.reg-page.vip-mode .conf-info-label   { color: #9999bb; }
+.reg-page.vip-mode .conf-info-value   { color: #e8e8f0; }
+.reg-page.vip-mode .conf-email-note   { background: #12122a; border-color: #2d2d4a; color: #c8c8e0; }
 
 /* ─── VIP badge in confirmation ───── */
 .conf-vip-badge {
@@ -1051,23 +1051,23 @@ body.vip-mode .conf-email-note   { background: #12122a; border-color: #2d2d4a; c
 }
 
 /* VIP dark theme overrides */
-body.vip-mode .phone-dial-code {
+.reg-page.vip-mode .phone-dial-code {
   background:   rgba(255, 255, 255, 0.06);
   border-color: rgba(255, 255, 255, 0.12);
   color:        #e2b96f;
 }
 
-body.vip-mode .phone-input-wrapper {
+.reg-page.vip-mode .phone-input-wrapper {
   border-color: rgba(255, 255, 255, 0.15);
   background:   #12122a;
 }
 
-body.vip-mode .phone-input-wrapper:focus-within {
+.reg-page.vip-mode .phone-input-wrapper:focus-within {
   border-color: #e2b96f;
   box-shadow:   0 0 0 3px rgba(226, 185, 111, 0.18);
 }
 
-body.vip-mode .phone-local-input {
+.reg-page.vip-mode .phone-local-input {
   color: #e8e0d0;
 }
 
@@ -1112,19 +1112,19 @@ body.vip-mode .phone-local-input {
 }
 
 /* VIP dark theme */
-body.vip-mode .radio-option {
+.reg-page.vip-mode .radio-option {
   border-color: rgba(255, 255, 255, 0.15);
   background:   rgba(255, 255, 255, 0.04);
   color:        #c8bfa8;
 }
 
-body.vip-mode .radio-option:hover {
+.reg-page.vip-mode .radio-option:hover {
   border-color: #e2b96f;
   background:   rgba(226, 185, 111, 0.08);
   color:        #f0e0bc;
 }
 
-body.vip-mode .radio-option-selected {
+.reg-page.vip-mode .radio-option-selected {
   border-color: #e2b96f;
   background:   rgba(226, 185, 111, 0.15);
   color:        #e2b96f;

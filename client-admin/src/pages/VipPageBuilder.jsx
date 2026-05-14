@@ -32,10 +32,10 @@ const DEFAULT_FIELD_NAMES = ['firstName', 'lastName', 'gender', 'email'];
 const LOCKED_FIELDS = new Set(['email']);
 
 const DEFAULT_FIELDS = [
+  { fieldName: 'gender',    label: 'Salutation', type: 'select', required: false, visible: true,
+    options: ['Mr', 'Mrs', 'Ms', 'Miss', 'Dr', 'Prof'] },
   { fieldName: 'firstName', label: 'First Name', type: 'text',   required: true,  visible: true, options: [] },
   { fieldName: 'lastName',  label: 'Last Name',  type: 'text',   required: true,  visible: true, options: [] },
-  { fieldName: 'gender',    label: 'Salutation', type: 'radio',  required: false, visible: true,
-    options: ['Mr', 'Mrs', 'Ms', 'Miss', 'Dr', 'Prof'] },
   { fieldName: 'email',     label: 'Email',      type: 'email',  required: true,  visible: true, options: [] },
 ];
 
@@ -50,7 +50,12 @@ const OPTIONAL_FIELDS = [
 
 function normalizeFields(saved) {
   const existing = saved || [];
-  const result   = DEFAULT_FIELDS.map((def) => existing.find((f) => f.fieldName === def.fieldName) || { ...def });
+  const result   = DEFAULT_FIELDS.map((def) => {
+    const found = existing.find((f) => f.fieldName === def.fieldName);
+    if (!found) return { ...def };
+    if (found.fieldName === 'gender' && found.type === 'radio') return { ...found, type: 'select' };
+    return found;
+  });
   existing.forEach((f) => { if (!DEFAULT_FIELD_NAMES.includes(f.fieldName)) result.push(f); });
   return result;
 }
@@ -228,7 +233,7 @@ function LivePreview({ config }) {
   const logoStyle = logoFit === 'fill'
     ? { width: '100%', height: 'auto', objectFit: 'contain', maxWidth: 'none', maxHeight: 'none' }
     : logoFit === 'max'
-    ? { width: '100%', alignSelf: 'stretch', objectFit: 'fill', maxWidth: 'none', maxHeight: 'none' }
+    ? { width: '100%', height: '100%', alignSelf: 'stretch', objectFit: 'fill', maxWidth: 'none', maxHeight: 'none' }
     : {
         ...(logoWidth  != null ? { width: `${logoWidth}%` }    : {}),
         ...(logoHeight != null ? { height: `${logoHeight}px` } : {}),
@@ -241,7 +246,7 @@ function LivePreview({ config }) {
                      : 'cover';
 
   const footerImgStyle = footerImageFit === 'fill'
-    ? { width: '100%', height: 'auto', objectFit: 'contain', display: 'block' }
+    ? { width: '100%', height: ftrImgHeight, objectFit: 'contain', display: 'block' }
     : footerImageFit === 'max'
     ? { width: '100%', height: ftrImgHeight, objectFit: 'fill', display: 'block' }
     : { width: '100%', height: ftrImgHeight, objectFit: 'cover', display: 'block' };
@@ -760,11 +765,11 @@ export default function VipPageBuilder() {
                   <div className="img-fit-buttons">
                     <button className={`img-fit-btn${config.logoFit === 'fill' ? ' active' : ''}`}
                       onClick={() => set('logoFit', config.logoFit === 'fill' ? null : 'fill')}>
-                      Fill to container
+                      Contain
                     </button>
                     <button className={`img-fit-btn${config.logoFit === 'max' ? ' active' : ''}`}
                       onClick={() => set('logoFit', config.logoFit === 'max' ? null : 'max')}>
-                      Maximize
+                      Stretch
                     </button>
                   </div>
                 </>
@@ -796,11 +801,11 @@ export default function VipPageBuilder() {
                   <div className="img-fit-buttons">
                     <button className={`img-fit-btn${config.headerImageFit === 'fill' ? ' active' : ''}`}
                       onClick={() => set('headerImageFit', config.headerImageFit === 'fill' ? null : 'fill')}>
-                      Fill to container
+                      Contain
                     </button>
                     <button className={`img-fit-btn${config.headerImageFit === 'max' ? ' active' : ''}`}
                       onClick={() => set('headerImageFit', config.headerImageFit === 'max' ? null : 'max')}>
-                      Maximize
+                      Stretch
                     </button>
                   </div>
                 </>
@@ -840,11 +845,11 @@ export default function VipPageBuilder() {
                   <div className="img-fit-buttons">
                     <button className={`img-fit-btn${config.footerImageFit === 'fill' ? ' active' : ''}`}
                       onClick={() => set('footerImageFit', config.footerImageFit === 'fill' ? null : 'fill')}>
-                      Fill to container
+                      Contain
                     </button>
                     <button className={`img-fit-btn${config.footerImageFit === 'max' ? ' active' : ''}`}
                       onClick={() => set('footerImageFit', config.footerImageFit === 'max' ? null : 'max')}>
-                      Maximize
+                      Stretch
                     </button>
                   </div>
                 </>

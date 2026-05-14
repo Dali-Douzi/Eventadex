@@ -587,11 +587,10 @@ export default function RegistrationForm({ vip = false }) {
         // Apply brand colors
         const primary   = data.pageConfig?.primaryColor   || (vip ? '#1a1a2e' : '#2563eb');
         const secondary = data.pageConfig?.secondaryColor || (vip ? '#e2b96f' : '#64748b');
+        const textColor = data.pageConfig?.textColor      || '#ffffff';
         document.documentElement.style.setProperty('--primary-color',   primary);
         document.documentElement.style.setProperty('--secondary-color', secondary);
-
-        // VIP dark theme
-        if (vip) document.body.classList.add('vip-mode');
+        document.documentElement.style.setProperty('--text-color',      textColor);
 
         setLoadState('loaded');
       })
@@ -603,7 +602,7 @@ export default function RegistrationForm({ vip = false }) {
     return () => {
       document.documentElement.style.removeProperty('--primary-color');
       document.documentElement.style.removeProperty('--secondary-color');
-      document.body.classList.remove('vip-mode');
+      document.documentElement.style.removeProperty('--text-color');
       document.title = 'Event Registration';
     };
   }, [orgSlug, vip]);
@@ -761,7 +760,7 @@ export default function RegistrationForm({ vip = false }) {
           headerImageUrl, footerImageUrl,
           logoWidth = null, logoHeight = null, logoFit = null, headerPadding = 28,
           headerImageHeight = 180, headerImageFit = null,
-          footerImageHeight = 80, footerImageFit = null,
+          footerImageHeight = 80, footerImageFit = null, footerImagePadding = 0,
           bodyBgType = '', bodyBgColor = '', bodyBgImageUrl = null,
           bodyBgImageSize = 'cover', bodyBgGradient = '',
           cardBgType = '', cardBgColor = '', cardBgGradient = '' } = pageConfig;
@@ -782,8 +781,8 @@ export default function RegistrationForm({ vip = false }) {
         }
     : {};
 
-  // ── Full-page background style ──────────────────────────
-  const bodyBgStyle =
+  // ── Page background style ───────────────────────────────
+  const pageBgStyle =
     bodyBgType === 'color'    && bodyBgColor
       ? { background: bodyBgColor }
     : bodyBgType === 'gradient' && bodyBgGradient
@@ -801,7 +800,7 @@ export default function RegistrationForm({ vip = false }) {
   const logoStyle = logoFit === 'fill'
     ? { width: '100%', height: 'auto', objectFit: 'contain', maxWidth: 'none', maxHeight: 'none' }
     : logoFit === 'max'
-    ? { width: '100%', alignSelf: 'stretch', objectFit: 'fill', maxWidth: 'none', maxHeight: 'none' }
+    ? { width: '100%', height: '100%', alignSelf: 'stretch', objectFit: 'fill', maxWidth: 'none', maxHeight: 'none' }
     : {
         ...(logoWidth  != null ? { width: `${logoWidth}%` }    : {}),
         ...(logoHeight != null ? { height: `${logoHeight}px` } : {}),
@@ -814,7 +813,7 @@ export default function RegistrationForm({ vip = false }) {
                      : 'cover';
 
   const footerImgStyle = footerImageFit === 'fill'
-    ? { width: '100%', height: 'auto', objectFit: 'contain', display: 'block' }
+    ? { width: '100%', height: footerImageHeight, objectFit: 'contain', display: 'block' }
     : footerImageFit === 'max'
     ? { width: '100%', height: footerImageHeight, objectFit: 'fill', display: 'block' }
     : { width: '100%', height: footerImageHeight, objectFit: 'cover', display: 'block' };
@@ -822,45 +821,48 @@ export default function RegistrationForm({ vip = false }) {
   const isLastStep  = stepIdx === steps.length - 1;
 
   return (
-    <div className="reg-page" style={bodyBgStyle}>
+    <div className={`reg-page${vip ? ' vip-mode' : ''}`} style={pageBgStyle}>
+      <div className="form-dock">
 
-      {/* ── Header ──────────────────────────────── */}
-      {!isEmbedded && <header
-        className="reg-header"
-        style={{
-          padding: `${headerPadding}px`,
-          ...(headerImageUrl ? {
-            backgroundImage: `url(${assetUrl(headerImageUrl)})`,
-            backgroundSize: headerBgSize,
-            backgroundPosition: 'center',
-            minHeight: headerImageHeight,
-          } : {}),
-        }}
-      >
-        {logoUrl ? (
-          <img
-            src={assetUrl(logoUrl)}
-            alt="Event logo"
-            className="reg-header-logo"
-            style={{
-              ...logoStyle,
-              WebkitMaskImage: 'linear-gradient(to right, black 55%, transparent 92%)',
-              maskImage:       'linear-gradient(to right, black 55%, transparent 92%)',
-            }}
-            onError={(e) => { e.target.style.display = 'none'; }}
-          />
-        ) : <div className="reg-header-logo-placeholder" />}
-        <div className="reg-header-info">
-          <h1 className="reg-header-title">{headerText || event.name}</h1>
-          {formatDateRange(durationStart, durationEnd) && (
-            <p className="reg-header-subtitle">{formatDateRange(durationStart, durationEnd)}</p>
+        {/* ── Header ────────────────────────────── */}
+        {!isEmbedded && <header
+          className="reg-header"
+          style={{
+            padding: `${headerPadding}px`,
+            ...(headerImageUrl ? {
+              backgroundImage: `url(${assetUrl(headerImageUrl)})`,
+              backgroundSize: headerBgSize,
+              backgroundPosition: 'center',
+              minHeight: headerImageHeight,
+            } : {}),
+          }}
+        >
+          {logoUrl && (
+            <img
+              src={assetUrl(logoUrl)}
+              alt="Event logo"
+              className="reg-header-logo"
+              style={{
+                ...logoStyle,
+                WebkitMaskImage: 'linear-gradient(to right, black 55%, transparent 92%)',
+                maskImage:       'linear-gradient(to right, black 55%, transparent 92%)',
+              }}
+              onError={(e) => { e.target.style.display = 'none'; }}
+            />
           )}
-          {location      && <p className="reg-header-location">{location}</p>}
-        </div>
-      </header>}
+          <div
+            className="reg-header-info"
+            style={logoUrl ? {} : { textAlign: 'center', flex: 'unset', width: '100%' }}
+          >
+            <h1 className="reg-header-title">{headerText || event.name}</h1>
+            {formatDateRange(durationStart, durationEnd) && (
+              <p className="reg-header-subtitle">{formatDateRange(durationStart, durationEnd)}</p>
+            )}
+            {location      && <p className="reg-header-location">{location}</p>}
+          </div>
+        </header>}
 
-      {/* ── Body ────────────────────────────────── */}
-      <main className="reg-body">
+        {/* ── Form card ─────────────────────────── */}
         <div className="reg-card" style={cardBgStyle}>
 
           {/* Step indicator */}
@@ -945,39 +947,41 @@ export default function RegistrationForm({ vip = false }) {
 
           </div>{/* end reg-card-body */}
         </div>{/* end reg-card */}
-      </main>
 
-      {/* ── Footer ──────────────────────────────── */}
-      {!isEmbedded && (footerText || footerLinks.length > 0 || footerImageUrl) && (
-        <footer className="reg-footer">
-          {footerImageUrl && (
-            <img
-              src={assetUrl(footerImageUrl)}
-              alt="Footer banner"
-              className="reg-footer-banner"
-              style={footerImgStyle}
-              onError={(e) => { e.target.style.display = 'none'; }}
-            />
-          )}
-          {footerText && <p className="reg-footer-text">{footerText}</p>}
-          {footerLinks.filter((l) => l.label).length > 0 && (
-            <div className="reg-footer-links">
-              {footerLinks.filter((l) => l.label).map((link, i) => (
-                <a
-                  key={i}
-                  href={link.url || '#'}
-                  className="reg-footer-link"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  {link.label}
-                </a>
-              ))}
-            </div>
-          )}
-        </footer>
-      )}
+        {/* ── Footer ──────────────────────────── */}
+        {!isEmbedded && (footerText || footerLinks.length > 0 || footerImageUrl) && (
+          <footer className="reg-footer">
+            {footerImageUrl && (
+              <div style={footerImagePadding > 0 ? { padding: footerImagePadding } : {}}>
+                <img
+                  src={assetUrl(footerImageUrl)}
+                  alt="Footer banner"
+                  className="reg-footer-banner"
+                  style={footerImgStyle}
+                  onError={(e) => { e.target.style.display = 'none'; }}
+                />
+              </div>
+            )}
+            {footerText && <p className="reg-footer-text">{footerText}</p>}
+            {footerLinks.filter((l) => l.label).length > 0 && (
+              <div className="reg-footer-links">
+                {footerLinks.filter((l) => l.label).map((link, i) => (
+                  <a
+                    key={i}
+                    href={link.url || '#'}
+                    className="reg-footer-link"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    {link.label}
+                  </a>
+                ))}
+              </div>
+            )}
+          </footer>
+        )}
 
+      </div>{/* end form-dock */}
     </div>
   );
 }
