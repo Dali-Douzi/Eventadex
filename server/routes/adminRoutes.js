@@ -28,6 +28,7 @@ const {
   getBadgeConfig, updateBadgeConfig, uploadBadgeBackground,
   getVipPageConfig, updateVipPageConfig, uploadVipLogo,
   listVipRegistrants, exportVipRegistrants, searchVipRegistrant, checkInVip, checkOutVip,
+  listWaitlist, listVipWaitlist,
   getLookups,
   getDashboardStats,
   importRegistrants,
@@ -94,6 +95,10 @@ router.get  ('/vip-registrants/search',                      requirePermission('
 router.get  ('/vip-registrants',                             requirePermission('canViewVip'), listVipRegistrants);
 router.patch('/vip-registrants/:id/checkin',  requirePermission('canCheckIn'), [idParam, validate], checkInVip);
 router.patch('/vip-registrants/:id/checkout', requirePermission('canCheckIn'), [idParam, validate], checkOutVip);
+
+// ── Waitlist ──────────────────────────────────────────────────────────────────
+router.get('/waitlist',     listWaitlist);
+router.get('/vip-waitlist', requirePermission('canViewVip'), listVipWaitlist);
 
 // ── Reminder config ───────────────────────────────────────────────────────────
 router.get   ('/reminder-config',                   getReminderConfig);

@@ -43,6 +43,7 @@ body {
   line-height: 1.5;
   font-size: 15px;
   -webkit-font-smoothing: antialiased;
+  overflow-x: hidden; /* prevent stray flex/grid children from causing page-level scroll */
 }
 
 button { cursor: pointer; border: none; background: none; font-family: inherit; font-size: inherit; }
@@ -61,7 +62,7 @@ input, select, textarea { font-family: inherit; font-size: inherit; }
 /* ── Form dock ────────────────────────────────────────────────────────────── */
 .form-dock {
   width: 100%;
-  max-width: 680px;
+  max-width: 860px;
   display: flex;
   flex-direction: column;
   border-radius: 16px;
@@ -76,8 +77,8 @@ input, select, textarea { font-family: inherit; font-size: inherit; }
   display: flex;
   flex-direction: row;
   align-items: center;
-  justify-content: space-between;
-  gap: 20px;
+  justify-content: flex-start;
+  gap: 24px;
 }
 
 .reg-header-logo {
@@ -96,7 +97,7 @@ input, select, textarea { font-family: inherit; font-size: inherit; }
 
 .reg-header-info {
   flex: 1;
-  text-align: right;
+  text-align: left;
 }
 
 .reg-header-title {
@@ -414,6 +415,65 @@ select.field-input {
   font-size: 11px;
   font-weight: 600;
   margin-top: 4px;
+}
+
+/* Session card — waitlist mode (full but has spots in queue) */
+.session-waitlist {
+  border-color: #f59e0b !important;
+  cursor: pointer;
+}
+.session-waitlist:hover {
+  background: #fffbeb;
+}
+.session-waitlist.session-selected {
+  background: #fffbeb;
+  border-color: #d97706 !important;
+}
+.session-waitlist-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  background: #fef3c7;
+  color: #92400e;
+  border-radius: 99px;
+  font-size: 11px;
+  font-weight: 600;
+  margin-top: 4px;
+}
+
+/* Waitlist notice on the review step */
+.waitlist-review-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  background: #fffbeb;
+  border: 1px solid #fcd34d;
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  font-size: 13.5px;
+  color: #78350f;
+  margin-bottom: 20px;
+  line-height: 1.5;
+}
+
+/* Waitlist notice on the payment step */
+.waitlist-payment-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  background: #fffbeb;
+  border: 1px solid #fcd34d;
+  border-radius: var(--radius);
+  padding: 18px;
+  font-size: 14px;
+  color: #78350f;
+  margin: 20px 0;
+  line-height: 1.6;
+}
+.waitlist-payment-notice p {
+  font-size: 13.5px;
+  color: #92400e;
 }
 
 .session-error {
@@ -1000,6 +1060,8 @@ select.field-input {
   overflow:       hidden;
   transition:     border-color 0.15s, box-shadow 0.15s;
   background:     var(--surface);
+  width:          100%;
+  max-width:      100%;
 }
 
 .phone-input-wrapper:focus-within {
@@ -1014,20 +1076,21 @@ select.field-input {
 .phone-dial-code {
   display:         flex;
   align-items:     center;
-  padding:         0 12px;
+  padding:         0 10px;
   background:      var(--bg);
   border-right:    1.5px solid var(--border);
-  font-size:       14px;
+  font-size:       13.5px;
   font-weight:     600;
   color:           var(--primary-color);
   white-space:     nowrap;
   user-select:     none;
-  min-width:       52px;
+  flex-shrink:     0;
   justify-content: center;
 }
 
 .phone-local-input {
   flex:            1;
+  min-width:       0; /* allow flex child to shrink below its content size */
   padding:         10px 14px;
   border:          none;
   outline:         none;
@@ -1035,7 +1098,6 @@ select.field-input {
   font-size:       15px;
   color:           var(--text);
   font-family:     inherit;
-  width:           0; /* flex child needs explicit 0 to shrink properly */
 }
 
 .phone-local-input.no-prefix {

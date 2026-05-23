@@ -11,34 +11,29 @@ const imageFilter = (_req, file, cb) => {
 /**
  * Build a multer middleware that:
  *  - buffers the file in memory (Cloudinary receives the buffer)
- *  - enforces a per-upload size limit
  *  - restricts to image MIME types
  *  - returns clean JSON errors instead of Express default HTML
+ *  No file-size limit is enforced — Cloudinary will reject files it cannot
+ *  process and the server has plenty of memory headroom for typical images.
  */
-function makeUpload(fieldName, limitMB) {
+function makeUpload(fieldName) {
   const upload = multer({
-    storage: multer.memoryStorage(),
-    limits:  { fileSize: limitMB * 1024 * 1024 },
+    storage:    multer.memoryStorage(),
     fileFilter: imageFilter,
   }).single(fieldName);
 
   return function (req, res, next) {
     upload(req, res, (err) => {
       if (!err) return next();
-      if (err.code === 'LIMIT_FILE_SIZE') {
-        return res.status(413).json({
-          message: `File too large — maximum size is ${limitMB} MB.`,
-        });
-      }
       res.status(400).json({ message: err.message || 'Upload failed' });
     });
   };
 }
 
-const handleLogoUpload       = makeUpload('logo',       2);   // 2 MB
-const handleBadgeBgUpload    = makeUpload('background', 5);   // 5 MB
-const handleBannerUpload     = makeUpload('image',      5);   // 5 MB
-const handleEmailImageUpload = makeUpload('image',      5);   // 5 MB
+const handleLogoUpload       = makeUpload('logo');
+const handleBadgeBgUpload    = makeUpload('background');
+const handleBannerUpload     = makeUpload('image');
+const handleEmailImageUpload = makeUpload('image');
 
 // ── Excel / CSV import upload (up to 10 MB, spreadsheet MIME types) ───────────
 const SPREADSHEET_MIMES = new Set([

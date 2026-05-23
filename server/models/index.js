@@ -8,9 +8,11 @@ const PageConfig       = require('./PageConfig');
 const EmailTemplate    = require('./EmailTemplate');
 const Registrant       = require('./Registrant');
 const BadgeConfig      = require('./BadgeConfig');
-const VipRegistrant    = require('./VipRegistrant');
-const VipPageConfig    = require('./VipPageConfig');
-const VipEmailTemplate = require('./VipEmailTemplate');
+const VipRegistrant          = require('./VipRegistrant');
+const VipPageConfig          = require('./VipPageConfig');
+const VipEmailTemplate       = require('./VipEmailTemplate');
+const WaitlistRegistrant     = require('./WaitlistRegistrant');
+const VipWaitlistRegistrant  = require('./VipWaitlistRegistrant');
 
 // Lookup models (shared schema, distinct collections)
 const Title            = createLookupModel('Title');
@@ -27,6 +29,8 @@ module.exports = {
   VipRegistrant,
   VipPageConfig,
   VipEmailTemplate,
+  WaitlistRegistrant,
+  VipWaitlistRegistrant,
   Title,
   Country,
   HearAbout,

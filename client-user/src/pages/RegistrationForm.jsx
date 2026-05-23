@@ -11,8 +11,8 @@ function formatDateRange(start, end) {
   if (!start && !end) return '';
   const toDate  = (s) => new Date(s.includes('T') ? s : s + 'T00:00:00');
   const hasTime = (s) => s && s.includes('T') && !/T00:00/.test(s);
-  const fmtDate = (d, year = true) => d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', ...(year ? { year: 'numeric' } : {}) });
-  const fmtTime = (d) => d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+  const fmtDate = (d, year = true) => d.toLocaleDateString('en-US-u-nu-latn', { month: 'long', day: 'numeric', ...(year ? { year: 'numeric' } : {}) });
+  const fmtTime = (d) => d.toLocaleTimeString('en-US-u-nu-latn', { hour: 'numeric', minute: '2-digit', hour12: true });
 
   if (!end)   { const d = toDate(start); return hasTime(start) ? `${fmtDate(d, false)}, ${fmtTime(d)}, ${d.getFullYear()}` : fmtDate(d); }
   if (!start) { const d = toDate(end);   return hasTime(end)   ? `${fmtDate(d, false)}, ${fmtTime(d)}, ${d.getFullYear()}` : fmtDate(d); }
@@ -47,7 +47,7 @@ function stateKey(field) {
 // ─── Date formatter ───────────────────────────────────────────────────────────
 function fmtDate(dateStr) {
   if (!dateStr) return '';
-  return new Date(dateStr).toLocaleDateString('en-US', {
+  return new Date(dateStr).toLocaleDateString('en-US-u-nu-latn', {
     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
   });
 }
@@ -62,9 +62,13 @@ function fmtCurrency(amount, currency) {
 }
 
 // ─── Build the ordered step list ──────────────────────────────────────────────
-function buildSteps(event) {
-  if (event?.paymentEnabled) return ['personal', 'session', 'payment', 'review'];
-  return ['personal', 'session', 'review'];
+function buildSteps(event, sessions) {
+  const hasSessions = Array.isArray(sessions) && sessions.length > 0;
+  const steps = ['personal'];
+  if (hasSessions)           steps.push('session');
+  if (event?.paymentEnabled) steps.push('payment');
+  steps.push('review');
+  return steps;
 }
 
 // ─── Dynamic field component ──────────────────────────────────────────────────
@@ -306,25 +310,26 @@ function Step2Session({ sessions, values, onChange, errors }) {
       <h2 className="step-heading">Select a Session</h2>
       <div className="session-grid">
         {sessions.map((s) => {
-          const isFull     = s.isFull;
-          const isSelected = values.sessionId === s._id;
-          const remaining  = s.remainingCapacity;
-          const spotsClass = isFull          ? 'spots-full'
-                           : remaining <= 10 ? 'spots-few'
-                           : 'spots-ok';
+          const isFull      = s.isFull;
+          const hasWaitlist = s.hasWaitlist;           // full but waitlist available
+          const isSelectable = !isFull || hasWaitlist;
+          const isSelected  = values.sessionId === s._id;
+          const remaining   = s.remainingCapacity;
+          const spotsClass  = isFull          ? 'spots-full'
+                            : remaining <= 10 ? 'spots-few'
+                            : 'spots-ok';
 
           return (
             <div
               key={s._id}
-              className={`session-card${isSelected ? ' session-selected' : ''}${isFull ? ' session-full' : ''}`}
-              onClick={() => !isFull && onChange('sessionId', s._id)}
+              className={`session-card${isSelected ? ' session-selected' : ''}${!isSelectable ? ' session-full' : ''}${hasWaitlist ? ' session-waitlist' : ''}`}
+              onClick={() => isSelectable && onChange('sessionId', s._id)}
               role="radio"
               aria-checked={isSelected}
-              aria-disabled={isFull}
-              tabIndex={isFull ? -1 : 0}
-              onKeyDown={(e) => { if (e.key === 'Enter' && !isFull) onChange('sessionId', s._id); }}
+              aria-disabled={!isSelectable}
+              tabIndex={isSelectable ? 0 : -1}
+              onKeyDown={(e) => { if (e.key === 'Enter' && isSelectable) onChange('sessionId', s._id); }}
             >
-              {/* Check mark for selected */}
               {isSelected && (
                 <span className="session-card-check" aria-hidden>
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -337,8 +342,17 @@ function Step2Session({ sessions, values, onChange, errors }) {
               <div className="session-name">{s.name}</div>
               <div className="session-date">{fmtDate(s.date)}</div>
 
-              {isFull ? (
+              {!isSelectable ? (
                 <span className="session-full-badge">Session Full</span>
+              ) : isFull && hasWaitlist ? (
+                <span className="session-waitlist-badge">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
+                       width="11" height="11" style={{ flexShrink: 0 }}>
+                    <circle cx="12" cy="12" r="10"/>
+                    <polyline points="12 6 12 12 16 14"/>
+                  </svg>
+                  Waitlist — {s.waitlistRemaining} spot{s.waitlistRemaining !== 1 ? 's' : ''} left
+                </span>
               ) : (
                 <span className={`session-spots ${spotsClass}`}>
                   {remaining <= 10
@@ -368,7 +382,7 @@ function Step2Session({ sessions, values, onChange, errors }) {
 }
 
 // ─── Step 3 — Review ──────────────────────────────────────────────────────────
-function Step3Review({ formFields, values, sessions, lookups, event, submitting, submitError, onSubmit, captchaRef, onCaptchaChange, captchaToken }) {
+function Step3Review({ formFields, values, sessions, lookups, event, submitting, submitError, onSubmit, captchaRef, onCaptchaChange, captchaToken, isWaitlist = false }) {
   const visibleFields = (formFields || []).filter((f) => f.visible !== false);
 
   function displayValue(field) {
@@ -397,6 +411,22 @@ function Step3Review({ formFields, values, sessions, lookups, event, submitting,
         <div className="submit-error">{submitError}</div>
       )}
 
+      {/* Waitlist notice */}
+      {isWaitlist && (
+        <div className="waitlist-review-notice">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+               width="16" height="16" style={{ flexShrink: 0, marginTop: 1 }}>
+            <circle cx="12" cy="12" r="10"/>
+            <polyline points="12 6 12 12 16 14"/>
+          </svg>
+          <span>
+            This session is currently full. Submitting will add you to the <strong>waitlist</strong>.
+            You'll receive an email confirmation and be notified if a spot opens up.
+            {event?.paymentEnabled && ' No payment is required to join the waitlist.'}
+          </span>
+        </div>
+      )}
+
       {/* Personal info */}
       <div className="review-section">
         <div className="review-section-title">Personal Information</div>
@@ -410,24 +440,26 @@ function Step3Review({ formFields, values, sessions, lookups, event, submitting,
         </div>
       </div>
 
-      {/* Session */}
-      <div className="review-section">
-        <div className="review-section-title">Session</div>
-        {selectedSession ? (
-          <div className="review-grid">
-            <div>
-              <div className="review-field-label">Session</div>
-              <div className="review-field-value">{selectedSession.name}</div>
+      {/* Session — only shown when the event has sessions */}
+      {sessions.length > 0 && (
+        <div className="review-section">
+          <div className="review-section-title">Session</div>
+          {selectedSession ? (
+            <div className="review-grid">
+              <div>
+                <div className="review-field-label">Session</div>
+                <div className="review-field-value">{selectedSession.name}</div>
+              </div>
+              <div>
+                <div className="review-field-label">Date</div>
+                <div className="review-field-value">{fmtDate(selectedSession.date)}</div>
+              </div>
             </div>
-            <div>
-              <div className="review-field-label">Date</div>
-              <div className="review-field-value">{fmtDate(selectedSession.date)}</div>
-            </div>
-          </div>
-        ) : (
-          <p style={{ color: 'var(--text-light)', fontSize: 14 }}>No session selected</p>
-        )}
-      </div>
+          ) : (
+            <p style={{ color: 'var(--text-light)', fontSize: 14 }}>No session selected</p>
+          )}
+        </div>
+      )}
 
       {/* Payment (if applicable) */}
       {event?.paymentEnabled && (
@@ -465,16 +497,28 @@ function Step3Review({ formFields, values, sessions, lookups, event, submitting,
         </div>
       ) : (
         <button
-          className="btn btn-success btn-lg"
+          className={`btn btn-lg${isWaitlist ? ' btn-primary' : ' btn-success'}`}
           style={{ marginTop: 16, opacity: captchaToken ? 1 : 0.5, cursor: captchaToken ? 'pointer' : 'not-allowed' }}
           onClick={onSubmit}
           disabled={!captchaToken}
         >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
-               width="17" height="17">
-            <polyline points="20 6 9 17 4 12" />
-          </svg>
-          Submit Registration
+          {isWaitlist ? (
+            <>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
+                   width="17" height="17">
+                <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+              </svg>
+              Join Waitlist
+            </>
+          ) : (
+            <>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
+                   width="17" height="17">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+              Submit Registration
+            </>
+          )}
         </button>
       )}
     </div>
@@ -501,6 +545,18 @@ export default function RegistrationForm({ vip = false }) {
   // ── Submission ────────────────────────────────────────────
   const [submitting, setSubmitting]   = useState(false);
   const [submitError, setSubmitError] = useState('');
+
+  // ── Payment ───────────────────────────────────────────────
+  const [paymentFailed, setPaymentFailed] = useState(false);
+
+  // ── Waitlist ──────────────────────────────────────────────
+  // True when the selected session is full but has waitlist spots available.
+  // Derived from live sessions data — no extra state needed.
+  const isWaitlistMode = useMemo(() => {
+    if (!formData || !values.sessionId) return false;
+    const s = (formData.sessions || []).find((x) => x._id === values.sessionId);
+    return s ? (s.isFull && s.hasWaitlist) : false;
+  }, [formData, values.sessionId]);
 
   // ── Captcha ───────────────────────────────────────────────
   const captchaRef  = useRef(null);
@@ -531,8 +587,9 @@ export default function RegistrationForm({ vip = false }) {
       .then(({ data }) => {
         setFormData(data);
 
-        // Build wizard steps
-        const s = vip ? ['personal', 'session', 'review'] : buildSteps(data.event);
+        // Build wizard steps — session step is only added when sessions exist.
+        // getVipFormConfig already normalises vipPaymentEnabled → paymentEnabled.
+        const s = buildSteps(data.event, data.sessions);
         setSteps(s);
 
         // Initialise form values from visible formFields
@@ -561,12 +618,14 @@ export default function RegistrationForm({ vip = false }) {
 
                 if (moyasarStatus === 'paid') {
                   setValues({ ...init, ...formValues, paymentIntentId: moyasarId });
+                  setPaymentFailed(false);
                   setStepIdx(s.length - 1); // jump straight to review
                   setLoadState('loaded');
                   return;
                 } else {
                   // Payment failed — restore personal info, land back on payment step
                   setValues({ ...init, ...formValues });
+                  setPaymentFailed(true);
                   setStepIdx(s.indexOf('payment'));
                   setLoadState('loaded');
                   return;
@@ -693,6 +752,7 @@ export default function RegistrationForm({ vip = false }) {
         ? `/api/public/${orgSlug}/vip/register`
         : `/api/public/${orgSlug}/register`;
       const { data } = await api.post(registerUrl, { ...values, captchaToken });
+      // Server returns waitlisted:true when the session filled up
       const confirmPath = vip
         ? `/${orgSlug}/vip/confirmation/${data.registrantId}`
         : `/${orgSlug}/confirmation/${data.registrantId}`;
@@ -700,7 +760,6 @@ export default function RegistrationForm({ vip = false }) {
     } catch (err) {
       const msg = err.response?.data?.error || 'Registration failed. Please try again.';
       setSubmitError(msg);
-      // Reset captcha so the user can try again
       captchaRef.current?.reset();
       setCaptchaToken('');
     } finally {
@@ -896,10 +955,14 @@ export default function RegistrationForm({ vip = false }) {
             {currentStep === 'payment' && (
               <PaymentStep
                 orgSlug={orgSlug}
+                vip={vip}
                 amount={event.ticketPrice}
                 currency={event.currency || 'SAR'}
                 formValues={values}
                 onBack={handleBack}
+                onNext={() => { setStepIdx((i) => i + 1); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+                paymentFailed={paymentFailed}
+                isWaitlist={isWaitlistMode}
               />
             )}
 
@@ -917,6 +980,7 @@ export default function RegistrationForm({ vip = false }) {
                 captchaRef={captchaRef}
                 onCaptchaChange={setCaptchaToken}
                 captchaToken={captchaToken}
+                isWaitlist={isWaitlistMode}
               />
             )}
 

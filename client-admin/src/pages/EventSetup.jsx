@@ -105,9 +105,10 @@ export default function EventSetup() {
     startDate: '', endDate: '', registrationOpenDate: '', status: 'draft',
   });
 
-  // Payment settings form
-  const [payForm, setPayForm]   = useState({ paymentEnabled: false, ticketPrice: '', currency: 'USD' });
-  const [payState, setPayState] = useState('idle'); // idle|saving|saved|error
+  // Payment settings form — standard + VIP
+  const [payForm, setPayForm]       = useState({ paymentEnabled: false, ticketPrice: '', currency: 'USD' });
+  const [vipPayForm, setVipPayForm] = useState({ vipPaymentEnabled: false, vipTicketPrice: '', vipCurrency: 'USD' });
+  const [payState, setPayState]     = useState('idle'); // idle|saving|saved|error
 
   // ── Fetch ──────────────────────────────────────────────────
   useEffect(() => {
@@ -127,6 +128,11 @@ export default function EventSetup() {
           paymentEnabled: data.paymentEnabled || false,
           ticketPrice:    data.ticketPrice    ? String(data.ticketPrice) : '',
           currency:       data.currency       || 'USD',
+        });
+        setVipPayForm({
+          vipPaymentEnabled: data.vipPaymentEnabled || false,
+          vipTicketPrice:    data.vipTicketPrice    ? String(data.vipTicketPrice) : '',
+          vipCurrency:       data.vipCurrency       || 'USD',
         });
       })
       .catch(() => {})
@@ -210,15 +216,22 @@ export default function EventSetup() {
   // ── Save payment settings ──────────────────────────────────
   async function handleSavePayment() {
     if (payForm.paymentEnabled && (!payForm.ticketPrice || Number(payForm.ticketPrice) <= 0)) {
-      toast('Please enter a valid ticket price greater than 0.', 'warning');
+      toast('Please enter a valid standard ticket price greater than 0.', 'warning');
+      return;
+    }
+    if (vipPayForm.vipPaymentEnabled && (!vipPayForm.vipTicketPrice || Number(vipPayForm.vipTicketPrice) <= 0)) {
+      toast('Please enter a valid VIP ticket price greater than 0.', 'warning');
       return;
     }
     setPayState('saving');
     try {
       const { data } = await api.patch('/api/admin/event/payment', {
-        paymentEnabled: payForm.paymentEnabled,
-        ticketPrice:    payForm.paymentEnabled ? Number(payForm.ticketPrice) : 0,
-        currency:       payForm.currency,
+        paymentEnabled:    payForm.paymentEnabled,
+        ticketPrice:       payForm.paymentEnabled    ? Number(payForm.ticketPrice)          : 0,
+        currency:          payForm.currency,
+        vipPaymentEnabled: vipPayForm.vipPaymentEnabled,
+        vipTicketPrice:    vipPayForm.vipPaymentEnabled ? Number(vipPayForm.vipTicketPrice) : 0,
+        vipCurrency:       vipPayForm.vipCurrency,
       });
       setEvent(data);
       setPayState('saved');
@@ -407,83 +420,167 @@ export default function EventSetup() {
       <div className="event-form-card" style={{ marginTop: 24 }}>
         <div className="event-form-title">Payment Settings</div>
 
-        {/* Enable/disable toggle */}
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
-          <div>
-            <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-dark)' }}>
-              Enable Paid Registration
-            </div>
-            <div style={{ fontSize: 12.5, color: 'var(--text-medium)', marginTop: 3, maxWidth: 380 }}>
-              When enabled, attendees must complete a Stripe payment before their
-              registration is confirmed.
-            </div>
+        {/* ── Standard Registration ── */}
+        <div style={{ marginBottom: 24 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-light)', marginBottom: 14 }}>
+            Standard Registration
           </div>
-          <label className="toggle" style={{ flexShrink: 0, marginTop: 2 }}>
-            <input
-              type="checkbox"
-              checked={payForm.paymentEnabled}
-              onChange={(e) => setPayForm((f) => ({ ...f, paymentEnabled: e.target.checked }))}
-            />
-            <span className="toggle-track" />
-          </label>
-        </div>
 
-        {/* Price + currency — only visible when payments are enabled */}
-        {payForm.paymentEnabled && (
-          <div className="form-row-2" style={{ marginTop: 20 }}>
-            <div className="form-group" style={{ marginBottom: 0 }}>
-              <label className="label">Ticket Price *</label>
-              <div style={{ position: 'relative' }}>
-                <span style={{
-                  position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)',
-                  color: 'var(--text-medium)', fontSize: 14, pointerEvents: 'none',
-                }}>
-                  {payForm.currency === 'SAR' ? 'ر.س' : payForm.currency === 'EUR' ? '€' : '$'}
-                </span>
-                <input
-                  className="input"
-                  type="number"
-                  min="0.01"
-                  step="0.01"
-                  value={payForm.ticketPrice}
-                  onChange={(e) => setPayForm((f) => ({ ...f, ticketPrice: e.target.value }))}
-                  placeholder="e.g. 99.00"
-                  style={{ paddingLeft: payForm.currency === 'SAR' ? 36 : 24 }}
-                />
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-dark)' }}>
+                Enable Paid Registration
+              </div>
+              <div style={{ fontSize: 12.5, color: 'var(--text-medium)', marginTop: 3, maxWidth: 380 }}>
+                When enabled, attendees must complete a Moyasar payment before their
+                registration is confirmed.
               </div>
             </div>
-            <div className="form-group" style={{ marginBottom: 0 }}>
-              <label className="label">Currency</label>
-              <select
-                className="input"
-                value={payForm.currency}
-                onChange={(e) => setPayForm((f) => ({ ...f, currency: e.target.value }))}
-                style={{ cursor: 'pointer' }}
-              >
-                <option value="USD">USD — US Dollar</option>
-                <option value="EUR">EUR — Euro</option>
-                <option value="GBP">GBP — British Pound</option>
-                <option value="SAR">SAR — Saudi Riyal</option>
-                <option value="AED">AED — UAE Dirham</option>
-                <option value="CAD">CAD — Canadian Dollar</option>
-                <option value="AUD">AUD — Australian Dollar</option>
-              </select>
-            </div>
+            <label className="toggle" style={{ flexShrink: 0, marginTop: 2 }}>
+              <input
+                type="checkbox"
+                checked={payForm.paymentEnabled}
+                onChange={(e) => setPayForm((f) => ({ ...f, paymentEnabled: e.target.checked }))}
+              />
+              <span className="toggle-track" />
+            </label>
           </div>
-        )}
 
-        {/* Info note for free events */}
-        {!payForm.paymentEnabled && (
-          <p style={{
-            marginTop: 14, fontSize: 13, color: 'var(--text-light)',
-            background: '#f8fafc', border: '1px solid var(--border)',
-            borderRadius: 'var(--radius-sm)', padding: '9px 12px',
-          }}>
-            Registration is currently <strong>free</strong>. Toggle the switch above to require payment.
-          </p>
-        )}
+          {payForm.paymentEnabled ? (
+            <div className="form-row-2" style={{ marginTop: 16 }}>
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="label">Ticket Price *</label>
+                <div style={{ position: 'relative' }}>
+                  <span style={{
+                    position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)',
+                    color: 'var(--text-medium)', fontSize: 14, pointerEvents: 'none',
+                  }}>
+                    {{ USD: '$', EUR: '€', GBP: '£', SAR: 'ر.س', AED: 'د.إ', CAD: 'C$', AUD: 'A$' }[payForm.currency] ?? '$'}
+                  </span>
+                  <input
+                    className="input"
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    value={payForm.ticketPrice}
+                    onChange={(e) => setPayForm((f) => ({ ...f, ticketPrice: e.target.value }))}
+                    placeholder="e.g. 99.00"
+                    style={{ paddingLeft: payForm.currency === 'SAR' ? 36 : 24 }}
+                  />
+                </div>
+              </div>
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="label">Currency</label>
+                <select
+                  className="input"
+                  value={payForm.currency}
+                  onChange={(e) => setPayForm((f) => ({ ...f, currency: e.target.value }))}
+                  style={{ cursor: 'pointer' }}
+                >
+                  <option value="USD">USD — US Dollar</option>
+                  <option value="EUR">EUR — Euro</option>
+                  <option value="GBP">GBP — British Pound</option>
+                  <option value="SAR">SAR — Saudi Riyal</option>
+                  <option value="AED">AED — UAE Dirham</option>
+                  <option value="CAD">CAD — Canadian Dollar</option>
+                  <option value="AUD">AUD — Australian Dollar</option>
+                </select>
+              </div>
+            </div>
+          ) : (
+            <p style={{
+              marginTop: 12, fontSize: 13, color: 'var(--text-light)',
+              background: '#f8fafc', border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-sm)', padding: '9px 12px',
+            }}>
+              Standard registration is currently <strong>free</strong>.
+            </p>
+          )}
+        </div>
 
-        <div style={{ marginTop: 18, display: 'flex', alignItems: 'center', gap: 12 }}>
+        {/* Divider */}
+        <div style={{ borderTop: '1px solid var(--border)', marginBottom: 24 }} />
+
+        {/* ── VIP Registration ── */}
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-light)', marginBottom: 14 }}>
+            VIP Registration
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-dark)' }}>
+                Enable Paid VIP Registration
+              </div>
+              <div style={{ fontSize: 12.5, color: 'var(--text-medium)', marginTop: 3, maxWidth: 380 }}>
+                When enabled, VIP attendees must complete a Moyasar payment before their
+                registration is confirmed.
+              </div>
+            </div>
+            <label className="toggle" style={{ flexShrink: 0, marginTop: 2 }}>
+              <input
+                type="checkbox"
+                checked={vipPayForm.vipPaymentEnabled}
+                onChange={(e) => setVipPayForm((f) => ({ ...f, vipPaymentEnabled: e.target.checked }))}
+              />
+              <span className="toggle-track" />
+            </label>
+          </div>
+
+          {vipPayForm.vipPaymentEnabled ? (
+            <div className="form-row-2" style={{ marginTop: 16 }}>
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="label">VIP Ticket Price *</label>
+                <div style={{ position: 'relative' }}>
+                  <span style={{
+                    position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)',
+                    color: 'var(--text-medium)', fontSize: 14, pointerEvents: 'none',
+                  }}>
+                    {{ USD: '$', EUR: '€', GBP: '£', SAR: 'ر.س', AED: 'د.إ', CAD: 'C$', AUD: 'A$' }[vipPayForm.vipCurrency] ?? '$'}
+                  </span>
+                  <input
+                    className="input"
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    value={vipPayForm.vipTicketPrice}
+                    onChange={(e) => setVipPayForm((f) => ({ ...f, vipTicketPrice: e.target.value }))}
+                    placeholder="e.g. 199.00"
+                    style={{ paddingLeft: vipPayForm.vipCurrency === 'SAR' ? 36 : 24 }}
+                  />
+                </div>
+              </div>
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="label">Currency</label>
+                <select
+                  className="input"
+                  value={vipPayForm.vipCurrency}
+                  onChange={(e) => setVipPayForm((f) => ({ ...f, vipCurrency: e.target.value }))}
+                  style={{ cursor: 'pointer' }}
+                >
+                  <option value="USD">USD — US Dollar</option>
+                  <option value="EUR">EUR — Euro</option>
+                  <option value="GBP">GBP — British Pound</option>
+                  <option value="SAR">SAR — Saudi Riyal</option>
+                  <option value="AED">AED — UAE Dirham</option>
+                  <option value="CAD">CAD — Canadian Dollar</option>
+                  <option value="AUD">AUD — Australian Dollar</option>
+                </select>
+              </div>
+            </div>
+          ) : (
+            <p style={{
+              marginTop: 12, fontSize: 13, color: 'var(--text-light)',
+              background: '#f8fafc', border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-sm)', padding: '9px 12px',
+            }}>
+              VIP registration is currently <strong>free</strong>.
+            </p>
+          )}
+        </div>
+
+        {/* Save button */}
+        <div style={{ marginTop: 24, display: 'flex', alignItems: 'center', gap: 12, borderTop: '1px solid var(--border)', paddingTop: 18 }}>
           <button className={payBtnClass} onClick={handleSavePayment} disabled={payState === 'saving'}>
             {payBtnLabel}
           </button>

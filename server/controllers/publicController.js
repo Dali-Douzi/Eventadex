@@ -41,6 +41,8 @@ const {
   VipRegistrant,
   VipPageConfig,
   VipEmailTemplate,
+  WaitlistRegistrant,
+  VipWaitlistRegistrant,
   Title, Country, HearAbout,
 } = require('../models');
 
@@ -112,18 +114,28 @@ function loadLookup(Model, orgId) {
   );
 }
 
-/** Enrich sessions with calculated remaining capacity. */
+/** Enrich sessions with calculated remaining capacity and waitlist info. */
 function enrichSessions(sessions) {
-  return (sessions || []).map((s) => ({
-    _id:               s._id,
-    name:              s.name,
-    date:              s.date,
-    capacity:          s.capacity,
-    waitlistCapacity:  s.waitlistCapacity,
-    registered:        s.registered || 0,
-    remainingCapacity: Math.max(0, s.capacity - (s.registered || 0)),
-    isFull:            (s.registered || 0) >= s.capacity,
-  }));
+  return (sessions || []).map((s) => {
+    const registered        = s.registered       || 0;
+    const waitlisted        = s.waitlisted        || 0;
+    const waitlistCapacity  = s.waitlistCapacity  || 0;
+    const isFull            = registered >= s.capacity;
+    const waitlistRemaining = Math.max(0, waitlistCapacity - waitlisted);
+    return {
+      _id:               s._id,
+      name:              s.name,
+      date:              s.date,
+      capacity:          s.capacity,
+      waitlistCapacity,
+      registered,
+      waitlisted,
+      remainingCapacity:  Math.max(0, s.capacity - registered),
+      isFull,
+      waitlistRemaining,
+      hasWaitlist:        isFull && waitlistCapacity > 0 && waitlistRemaining > 0,
+    };
+  });
 }
 
 /** Resolve a lookup ObjectId to the document's name. Returns null on no match. */
@@ -246,7 +258,11 @@ async function register(req, res) {
     if (!body.firstName?.trim()) return res.status(400).json({ error: 'First name is required' });
     if (!body.lastName?.trim())  return res.status(400).json({ error: 'Last name is required' });
     if (!body.email?.trim())     return res.status(400).json({ error: 'Email is required' });
-    if (!body.sessionId)         return res.status(400).json({ error: 'Session selection is required' });
+
+    const hasSessions = event.sessions.length > 0;
+    if (hasSessions && !body.sessionId) {
+      return res.status(400).json({ error: 'Session selection is required' });
+    }
 
     // ── Dynamic required field validation (from pageConfig) ────
     const requiredFields = (pageConfig?.formFields || []).filter(
@@ -261,9 +277,34 @@ async function register(req, res) {
       }
     }
 
-    // ── Payment verification (Moyasar) ────────────────────────
+    // ── Session validation ─────────────────────────────────────
+    let session          = null;
+    let sessionObjId     = null;
+    let sessionFull      = false;
+    let waitlistAvailable = false;
+
+    if (hasSessions) {
+      if (!mongoose.isValidObjectId(body.sessionId)) {
+        return res.status(400).json({ error: 'Invalid session ID' });
+      }
+      session = event.sessions.id(body.sessionId);
+      if (!session) {
+        return res.status(400).json({ error: 'Session not found' });
+      }
+
+      sessionObjId      = new mongoose.Types.ObjectId(body.sessionId);
+      sessionFull       = (session.registered || 0) >= session.capacity;
+      waitlistAvailable = session.waitlistCapacity > 0 &&
+                          (session.waitlisted  || 0) < session.waitlistCapacity;
+
+      if (sessionFull && !waitlistAvailable) {
+        return res.status(400).json({ error: 'Session is full — no spots remaining' });
+      }
+    }
+
+    // ── Payment verification (only for confirmed spots, not waitlist) ──
     let paymentStatus = 'free';
-    if (event.paymentEnabled) {
+    if (event.paymentEnabled && !sessionFull) {
       if (!body.paymentIntentId) {
         return res.status(400).json({ error: 'Payment is required for this event' });
       }
@@ -276,14 +317,12 @@ async function register(req, res) {
         return res.status(400).json({ error: 'Could not verify payment. Please try again.' });
       }
 
-      // 1. Status must be paid
       if (payment.status !== 'paid') {
         return res.status(400).json({
           error: `Payment has not been confirmed (status: ${payment.status})`,
         });
       }
 
-      // 2. Amount must match — prevents price manipulation
       const expectedAmount = toSmallestUnit(event.ticketPrice, event.currency);
       if (payment.amount !== expectedAmount) {
         console.warn(
@@ -298,56 +337,192 @@ async function register(req, res) {
       paymentStatus = 'paid';
     }
 
-    // ── Session capacity check ─────────────────────────────────
-    if (!mongoose.isValidObjectId(body.sessionId)) {
-      return res.status(400).json({ error: 'Invalid session ID' });
-    }
-    const session = event.sessions.id(body.sessionId);
-    if (!session) {
-      return res.status(400).json({ error: 'Session not found' });
-    }
-    if ((session.registered || 0) >= session.capacity) {
-      return res.status(400).json({ error: 'Session is full — no spots remaining' });
-    }
-
     // ── Resolve lookup IDs → display names ────────────────────
     const [titleDoc, countryDoc, hearAboutDoc] =
       await Promise.all([
-        resolveLookupId(Title,   body.titleId),
-        resolveLookupId(Country, body.countryId),
+        resolveLookupId(Title,     body.titleId),
+        resolveLookupId(Country,   body.countryId),
         resolveLookupId(HearAbout, body.hearAboutId),
       ]);
 
-    // ── Generate QR code ───────────────────────────────────────
-    const qrCodeValue = crypto.randomUUID();          // unique identifier stored in DB
-    const qrCodeImage = await generateQR(qrCodeValue); // base64 PNG for email + confirmation
+    const commonFields = {
+      organizationId: org._id,
+      eventId:        event._id,
+      sessionId:      sessionObjId,
+      firstName:      body.firstName.trim(),
+      lastName:       body.lastName.trim(),
+      email:          body.email.trim().toLowerCase(),
+      phone:          body.phone?.trim()    || undefined,
+      landline:       body.landline?.trim() || undefined,
+      mobile:         body.mobile?.trim()   || undefined,
+      gender:         body.gender?.trim()   || undefined,
+      country:        countryDoc?.name      || undefined,
+      title:          titleDoc?.name        || undefined,
+      hearAbout:      hearAboutDoc?.name    || undefined,
+      customFields:   collectCustomFields(pageConfig?.formFields, body),
+    };
 
-    // ── Create registrant ──────────────────────────────────────
-    const registrant = await Registrant.create({
-      organizationId:   org._id,
-      eventId:          event._id,
-      sessionId:        new mongoose.Types.ObjectId(body.sessionId),
-      firstName:        body.firstName.trim(),
-      lastName:         body.lastName.trim(),
-      email:            body.email.trim().toLowerCase(),
-      phone:            body.phone?.trim()    || undefined,
-      landline:         body.landline?.trim() || undefined,
-      mobile:           body.mobile?.trim()   || undefined,
-      gender:           body.gender?.trim()   || undefined,
-      country:          countryDoc?.name      || undefined,
-      title:            titleDoc?.name        || undefined,
-      hearAbout:        hearAboutDoc?.name    || undefined,
-      customFields:     collectCustomFields(pageConfig?.formFields, body),
-      qrCode:           qrCodeValue,
-      paymentStatus,
-      paymentIntentId:  body.paymentIntentId  || undefined,
-    });
+    // ── No-session event: skip capacity logic entirely ─────────
+    if (!hasSessions) {
+      const qrCodeValue = crypto.randomUUID();
+      const qrCodeImage = await generateQR(qrCodeValue);
+      const registrant  = await Registrant.create({
+        ...commonFields,
+        sessionId:       undefined,
+        qrCode:          qrCodeValue,
+        paymentStatus,
+        paymentIntentId: body.paymentIntentId || undefined,
+      });
+      const baseUrl = process.env.CLIENT_USER_URL || '';
+      sendConfirmationEmail({
+        registrant:      registrant.toObject(),
+        event:           { name: event.name },
+        session:         null,
+        organization:    { name: org.name },
+        emailTemplate,
+        qrCodeDataUrl:   qrCodeImage,
+        logoUrl:         pageConfig?.logoUrl || null,
+        confirmationUrl: `${baseUrl}/${org.slug}/confirmation/${registrant._id}`,
+      }).catch((e) => console.error('[public] Confirmation email failed:', e.message));
+      return res.status(201).json({
+        success:      true,
+        waitlisted:   false,
+        registrantId: registrant._id,
+        qrCode:       qrCodeImage,
+      });
+    }
 
-    // ── Increment session.registered atomically ────────────────
-    await Event.findOneAndUpdate(
-      { organizationId: org._id, 'sessions._id': body.sessionId },
-      { $inc: { 'sessions.$.registered': 1 } }
+    // ── Waitlist path ──────────────────────────────────────────
+    if (sessionFull) {
+      // Atomically claim a waitlist spot
+      const wlEvent = await Event.findOneAndUpdate(
+        {
+          organizationId: org._id,
+          sessions: {
+            $elemMatch: {
+              _id:        sessionObjId,
+              waitlisted: { $lt: session.waitlistCapacity },
+            },
+          },
+        },
+        { $inc: { 'sessions.$.waitlisted': 1 } },
+        { new: true }
+      );
+
+      if (!wlEvent) {
+        return res.status(400).json({ error: 'Session is full — no spots remaining' });
+      }
+
+      const updatedSession  = wlEvent.sessions.id(body.sessionId);
+      const waitlistPosition = updatedSession.waitlisted; // already incremented
+
+      const wlEntry = await WaitlistRegistrant.create({
+        ...commonFields,
+        waitlistPosition,
+        paymentIntentId: body.paymentIntentId || undefined,
+      });
+
+      const baseUrl = process.env.CLIENT_USER_URL || '';
+      sendConfirmationEmail({
+        registrant:      { ...wlEntry.toObject(), waitlistPosition },
+        event:           { name: event.name },
+        session:         { name: session.name, date: session.date },
+        organization:    { name: org.name },
+        emailTemplate,
+        qrCodeDataUrl:   null, // no QR for waitlisted
+        logoUrl:         pageConfig?.logoUrl || null,
+        confirmationUrl: `${baseUrl}/${org.slug}/confirmation/${wlEntry._id}`,
+        isWaitlisted:    true,
+      }).catch((e) => console.error('[public] Waitlist email failed:', e.message));
+
+      return res.status(201).json({
+        success:          true,
+        waitlisted:       true,
+        waitlistPosition,
+        registrantId:     wlEntry._id,
+      });
+    }
+
+    // ── Confirmed registration path ────────────────────────────
+    // Atomically claim a regular spot (race-condition safe)
+    const claimedEvent = await Event.findOneAndUpdate(
+      {
+        organizationId: org._id,
+        sessions: {
+          $elemMatch: {
+            _id:        sessionObjId,
+            registered: { $lt: session.capacity },
+          },
+        },
+      },
+      { $inc: { 'sessions.$.registered': 1 } },
+      { new: true }
     );
+
+    if (!claimedEvent) {
+      // Lost the race — session filled between check and increment
+      if (!waitlistAvailable) {
+        return res.status(400).json({ error: 'Session is full — no spots remaining' });
+      }
+
+      // Fall into waitlist
+      const wlEvent = await Event.findOneAndUpdate(
+        {
+          organizationId: org._id,
+          sessions: {
+            $elemMatch: {
+              _id:        sessionObjId,
+              waitlisted: { $lt: session.waitlistCapacity },
+            },
+          },
+        },
+        { $inc: { 'sessions.$.waitlisted': 1 } },
+        { new: true }
+      );
+      if (!wlEvent) {
+        return res.status(400).json({ error: 'Session is full — no spots remaining' });
+      }
+
+      const updatedSession   = wlEvent.sessions.id(body.sessionId);
+      const waitlistPosition = updatedSession.waitlisted;
+
+      const wlEntry = await WaitlistRegistrant.create({
+        ...commonFields,
+        waitlistPosition,
+        paymentIntentId: body.paymentIntentId || undefined,
+      });
+
+      const baseUrl = process.env.CLIENT_USER_URL || '';
+      sendConfirmationEmail({
+        registrant:      { ...wlEntry.toObject(), waitlistPosition },
+        event:           { name: event.name },
+        session:         { name: session.name, date: session.date },
+        organization:    { name: org.name },
+        emailTemplate,
+        qrCodeDataUrl:   null,
+        logoUrl:         pageConfig?.logoUrl || null,
+        confirmationUrl: `${baseUrl}/${org.slug}/confirmation/${wlEntry._id}`,
+        isWaitlisted:    true,
+      }).catch((e) => console.error('[public] Waitlist email failed:', e.message));
+
+      return res.status(201).json({
+        success:          true,
+        waitlisted:       true,
+        waitlistPosition,
+        registrantId:     wlEntry._id,
+      });
+    }
+
+    // ── Generate QR + create registrant ───────────────────────
+    const qrCodeValue = crypto.randomUUID();
+    const qrCodeImage = await generateQR(qrCodeValue);
+
+    const registrant = await Registrant.create({
+      ...commonFields,
+      qrCode:          qrCodeValue,
+      paymentStatus,
+      paymentIntentId: body.paymentIntentId || undefined,
+    });
 
     // ── Send confirmation email (fire and forget) ──────────────
     const baseUrl = process.env.CLIENT_USER_URL || '';
@@ -366,8 +541,9 @@ async function register(req, res) {
 
     return res.status(201).json({
       success:      true,
+      waitlisted:   false,
       registrantId: registrant._id,
-      qrCode:       qrCodeImage, // base64 data URL for the confirmation page
+      qrCode:       qrCodeImage,
     });
 
   } catch (err) {
@@ -395,16 +571,23 @@ async function getRegistrantDetail(req, res) {
       return res.status(400).json({ error: 'Invalid registrant ID' });
     }
 
-    let registrant = await Registrant.findOne({
-      _id:            req.params.id,
-      organizationId: org._id,
-    }).lean();
+    let registrant   = null;
+    let isWaitlisted = false;
+
+    registrant = await Registrant.findOne({ _id: req.params.id, organizationId: org._id }).lean();
 
     if (!registrant) {
-      registrant = await VipRegistrant.findOne({
-        _id:            req.params.id,
-        organizationId: org._id,
-      }).lean();
+      registrant = await VipRegistrant.findOne({ _id: req.params.id, organizationId: org._id }).lean();
+    }
+
+    if (!registrant) {
+      registrant   = await WaitlistRegistrant.findOne({ _id: req.params.id, organizationId: org._id }).lean();
+      isWaitlisted = !!registrant;
+    }
+
+    if (!registrant) {
+      registrant   = await VipWaitlistRegistrant.findOne({ _id: req.params.id, organizationId: org._id }).lean();
+      isWaitlisted = !!registrant;
     }
 
     if (!registrant) {
@@ -417,15 +600,20 @@ async function getRegistrantDetail(req, res) {
       ? event.sessions.id(registrant.sessionId?.toString())
       : null;
 
-    // Generate QR image on demand (value is stored in DB, image is always derived)
-    const qrCodeImage = await generateQR(registrant.qrCode);
+    // QR code only exists for confirmed registrants, not waitlisted ones
+    const qrCodeImage = (!isWaitlisted && registrant.qrCode)
+      ? await generateQR(registrant.qrCode)
+      : null;
 
     return res.json({
       ...registrant,
       qrCodeImage,
-      sessionName: session?.name  || null,
-      sessionDate: session?.date  || null,
-      eventName:   event?.name    || null,
+      sessionName:      session?.name          || null,
+      sessionDate:      session?.date          || null,
+      eventName:        event?.name            || null,
+      isWaitlisted,
+      waitlistPosition: registrant.waitlistPosition ?? null,
+      waitlistStatus:   registrant.status      ?? null,
     });
   } catch (err) {
     console.error('[public] getRegistrantDetail error:', err);
@@ -461,10 +649,16 @@ async function getVipFormConfig(req, res) {
 
     return res.json({
       event: {
-        name:        event.name,
-        description: event.description,
-        startDate:   event.startDate,
-        endDate:     event.endDate,
+        name:           event.name,
+        description:    event.description,
+        startDate:      event.startDate,
+        endDate:        event.endDate,
+        // Expose VIP payment fields under the same keys the client already uses,
+        // so all existing payment logic (buildSteps, PaymentStep, review) works
+        // identically for VIP without extra branching in the frontend.
+        paymentEnabled: event.vipPaymentEnabled,
+        ticketPrice:    event.vipTicketPrice,
+        currency:       event.vipCurrency,
         sessions,
       },
       pageConfig: vipPageConfig || { primaryColor: '#1a1a2e', secondaryColor: '#e2b96f' },
@@ -509,17 +703,70 @@ async function registerVip(req, res) {
     if (!body.firstName?.trim()) return res.status(400).json({ error: 'First name is required' });
     if (!body.lastName?.trim())  return res.status(400).json({ error: 'Last name is required' });
     if (!body.email?.trim())     return res.status(400).json({ error: 'Email is required' });
-    if (!body.sessionId)         return res.status(400).json({ error: 'Session selection is required' });
 
-    if (!mongoose.isValidObjectId(body.sessionId)) {
-      return res.status(400).json({ error: 'Invalid session ID' });
+    const hasSessions = event.sessions.length > 0;
+    if (hasSessions && !body.sessionId) {
+      return res.status(400).json({ error: 'Session selection is required' });
     }
-    const session = event.sessions.id(body.sessionId);
-    if (!session) {
-      return res.status(400).json({ error: 'Session not found' });
+
+    // ── Session validation ─────────────────────────────────────
+    let session          = null;
+    let sessionObjId     = null;
+    let sessionFull      = false;
+    let waitlistAvailable = false;
+
+    if (hasSessions) {
+      if (!mongoose.isValidObjectId(body.sessionId)) {
+        return res.status(400).json({ error: 'Invalid session ID' });
+      }
+      session = event.sessions.id(body.sessionId);
+      if (!session) {
+        return res.status(400).json({ error: 'Session not found' });
+      }
+
+      sessionObjId      = new mongoose.Types.ObjectId(body.sessionId);
+      sessionFull       = (session.registered || 0) >= session.capacity;
+      waitlistAvailable = session.waitlistCapacity > 0 &&
+                          (session.waitlisted  || 0) < session.waitlistCapacity;
+
+      if (sessionFull && !waitlistAvailable) {
+        return res.status(400).json({ error: 'Session is full — no spots remaining' });
+      }
     }
-    if ((session.registered || 0) >= session.capacity) {
-      return res.status(400).json({ error: 'Session is full — no spots remaining' });
+
+    // ── VIP payment verification (only for confirmed spots) ───
+    let paymentStatus = 'free';
+    if (event.vipPaymentEnabled && !sessionFull) {
+      if (!body.paymentIntentId) {
+        return res.status(400).json({ error: 'Payment is required for VIP registration' });
+      }
+
+      let payment;
+      try {
+        payment = await fetchMoyasarPayment(body.paymentIntentId);
+      } catch (err) {
+        console.error('[public] Moyasar VIP fetch error:', err.message);
+        return res.status(400).json({ error: 'Could not verify payment. Please try again.' });
+      }
+
+      if (payment.status !== 'paid') {
+        return res.status(400).json({
+          error: `Payment has not been confirmed (status: ${payment.status})`,
+        });
+      }
+
+      const expectedAmount = toSmallestUnit(event.vipTicketPrice, event.vipCurrency);
+      if (payment.amount !== expectedAmount) {
+        console.warn(
+          `[public] Moyasar VIP amount mismatch for org ${org._id}: ` +
+          `expected ${expectedAmount}, got ${payment.amount}`
+        );
+        return res.status(400).json({
+          error: 'Payment amount does not match the VIP ticket price. Please restart the registration.',
+        });
+      }
+
+      paymentStatus = 'paid';
     }
 
     const [titleDoc, countryDoc, hearAboutDoc] =
@@ -529,33 +776,182 @@ async function registerVip(req, res) {
         resolveLookupId(HearAbout, body.hearAboutId),
       ]);
 
+    const commonFields = {
+      organizationId: org._id,
+      eventId:        event._id,
+      sessionId:      sessionObjId,
+      firstName:      body.firstName.trim(),
+      lastName:       body.lastName.trim(),
+      email:          body.email.trim().toLowerCase(),
+      phone:          body.phone?.trim()    || undefined,
+      landline:       body.landline?.trim() || undefined,
+      mobile:         body.mobile?.trim()   || undefined,
+      gender:         body.gender?.trim()   || undefined,
+      country:        countryDoc?.name      || undefined,
+      title:          titleDoc?.name        || undefined,
+      hearAbout:      hearAboutDoc?.name    || undefined,
+      customFields:   collectCustomFields(vipPageConfig?.formFields, body),
+    };
+
+    const baseUrl = process.env.CLIENT_USER_URL || '';
+
+    // ── No-session VIP event: skip capacity logic entirely ─────
+    if (!hasSessions) {
+      const qrCodeValue = crypto.randomUUID();
+      const qrCodeImage = await generateQR(qrCodeValue);
+      const registrant  = await VipRegistrant.create({
+        ...commonFields,
+        sessionId:       undefined,
+        qrCode:          qrCodeValue,
+        paymentStatus,
+        paymentIntentId: body.paymentIntentId || undefined,
+      });
+      sendConfirmationEmail({
+        registrant:      registrant.toObject(),
+        event:           { name: event.name },
+        session:         null,
+        organization:    { name: org.name },
+        emailTemplate,
+        qrCodeDataUrl:   qrCodeImage,
+        logoUrl:         vipPageConfig?.logoUrl || null,
+        confirmationUrl: `${baseUrl}/${org.slug}/vip/confirmation/${registrant._id}`,
+      }).catch((e) => console.error('[public] VIP confirmation email failed:', e.message));
+      return res.status(201).json({
+        success:      true,
+        waitlisted:   false,
+        registrantId: registrant._id,
+        qrCode:       qrCodeImage,
+        badgeType:    'vip',
+      });
+    }
+
+    // ── Waitlist path ──────────────────────────────────────────
+    if (sessionFull) {
+      const wlEvent = await Event.findOneAndUpdate(
+        {
+          organizationId: org._id,
+          sessions: {
+            $elemMatch: {
+              _id:        sessionObjId,
+              waitlisted: { $lt: session.waitlistCapacity },
+            },
+          },
+        },
+        { $inc: { 'sessions.$.waitlisted': 1 } },
+        { new: true }
+      );
+
+      if (!wlEvent) {
+        return res.status(400).json({ error: 'Session is full — no spots remaining' });
+      }
+
+      const updatedSession   = wlEvent.sessions.id(body.sessionId);
+      const waitlistPosition = updatedSession.waitlisted;
+
+      const wlEntry = await VipWaitlistRegistrant.create({
+        ...commonFields,
+        waitlistPosition,
+        paymentIntentId: body.paymentIntentId || undefined,
+      });
+
+      sendConfirmationEmail({
+        registrant:      { ...wlEntry.toObject(), waitlistPosition },
+        event:           { name: event.name },
+        session:         { name: session.name, date: session.date },
+        organization:    { name: org.name },
+        emailTemplate,
+        qrCodeDataUrl:   null,
+        logoUrl:         vipPageConfig?.logoUrl || null,
+        confirmationUrl: `${baseUrl}/${org.slug}/vip/confirmation/${wlEntry._id}`,
+        isWaitlisted:    true,
+      }).catch((e) => console.error('[public] VIP waitlist email failed:', e.message));
+
+      return res.status(201).json({
+        success:          true,
+        waitlisted:       true,
+        waitlistPosition,
+        registrantId:     wlEntry._id,
+        badgeType:        'vip',
+      });
+    }
+
+    // ── Confirmed VIP registration (atomic) ───────────────────
+    const claimedEvent = await Event.findOneAndUpdate(
+      {
+        organizationId: org._id,
+        sessions: {
+          $elemMatch: {
+            _id:        sessionObjId,
+            registered: { $lt: session.capacity },
+          },
+        },
+      },
+      { $inc: { 'sessions.$.registered': 1 } },
+      { new: true }
+    );
+
+    if (!claimedEvent) {
+      if (!waitlistAvailable) {
+        return res.status(400).json({ error: 'Session is full — no spots remaining' });
+      }
+
+      const wlEvent = await Event.findOneAndUpdate(
+        {
+          organizationId: org._id,
+          sessions: {
+            $elemMatch: {
+              _id:        sessionObjId,
+              waitlisted: { $lt: session.waitlistCapacity },
+            },
+          },
+        },
+        { $inc: { 'sessions.$.waitlisted': 1 } },
+        { new: true }
+      );
+      if (!wlEvent) {
+        return res.status(400).json({ error: 'Session is full — no spots remaining' });
+      }
+
+      const updatedSession   = wlEvent.sessions.id(body.sessionId);
+      const waitlistPosition = updatedSession.waitlisted;
+
+      const wlEntry = await VipWaitlistRegistrant.create({
+        ...commonFields,
+        waitlistPosition,
+        paymentIntentId: body.paymentIntentId || undefined,
+      });
+
+      sendConfirmationEmail({
+        registrant:      { ...wlEntry.toObject(), waitlistPosition },
+        event:           { name: event.name },
+        session:         { name: session.name, date: session.date },
+        organization:    { name: org.name },
+        emailTemplate,
+        qrCodeDataUrl:   null,
+        logoUrl:         vipPageConfig?.logoUrl || null,
+        confirmationUrl: `${baseUrl}/${org.slug}/vip/confirmation/${wlEntry._id}`,
+        isWaitlisted:    true,
+      }).catch((e) => console.error('[public] VIP waitlist email failed:', e.message));
+
+      return res.status(201).json({
+        success:          true,
+        waitlisted:       true,
+        waitlistPosition,
+        registrantId:     wlEntry._id,
+        badgeType:        'vip',
+      });
+    }
+
     const qrCodeValue = crypto.randomUUID();
     const qrCodeImage = await generateQR(qrCodeValue);
 
     const registrant = await VipRegistrant.create({
-      organizationId:   org._id,
-      eventId:          event._id,
-      sessionId:        new mongoose.Types.ObjectId(body.sessionId),
-      firstName:        body.firstName.trim(),
-      lastName:         body.lastName.trim(),
-      email:            body.email.trim().toLowerCase(),
-      phone:            body.phone?.trim()    || undefined,
-      landline:         body.landline?.trim() || undefined,
-      mobile:           body.mobile?.trim()   || undefined,
-      gender:           body.gender?.trim()   || undefined,
-      country:          countryDoc?.name      || undefined,
-      title:            titleDoc?.name        || undefined,
-      hearAbout:        hearAboutDoc?.name    || undefined,
-      customFields:     collectCustomFields(vipPageConfig?.formFields, body),
-      qrCode:           qrCodeValue,
+      ...commonFields,
+      qrCode:          qrCodeValue,
+      paymentStatus,
+      paymentIntentId: body.paymentIntentId || undefined,
     });
 
-    await Event.findOneAndUpdate(
-      { organizationId: org._id, 'sessions._id': body.sessionId },
-      { $inc: { 'sessions.$.registered': 1 } }
-    );
-
-    const baseUrl = process.env.CLIENT_USER_URL || '';
     sendConfirmationEmail({
       registrant:      registrant.toObject(),
       event:           { name: event.name },
@@ -571,6 +967,7 @@ async function registerVip(req, res) {
 
     return res.status(201).json({
       success:      true,
+      waitlisted:   false,
       registrantId: registrant._id,
       qrCode:       qrCodeImage,
       badgeType:    'vip',

@@ -16,13 +16,7 @@
     "dev:admin": "npm run dev --workspace=@event-saas/client-admin",
     "dev:user": "npm run dev --workspace=@event-saas/client-user",
     "install:all": "npm install",
-    "build:all": "npm run build --workspace=@event-saas/client-master && npm run build --workspace=@event-saas/client-admin && npm run build --workspace=@event-saas/client-user",
-    "start:prod": "pm2 start ecosystem.config.cjs",
-    "stop": "pm2 stop ecosystem.config.cjs",
-    "restart": "pm2 restart ecosystem.config.cjs",
-    "logs": "pm2 logs",
-    "status": "pm2 status",
-    "setup": "npm install -g pm2 serve && npm install"
+    "build:all": "npm run build --workspace=@event-saas/client-master && npm run build --workspace=@event-saas/client-admin && npm run build --workspace=@event-saas/client-user"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"

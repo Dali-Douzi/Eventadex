@@ -5,7 +5,7 @@ import api from '../api/axios';
 // ─── Date formatter ───────────────────────────────────────────────────────────
 function fmtDate(dateStr) {
   if (!dateStr) return '—';
-  return new Date(dateStr).toLocaleDateString('en-US', {
+  return new Date(dateStr).toLocaleDateString('en-US-u-nu-latn', {
     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
   });
 }
@@ -93,12 +93,103 @@ export default function Confirmation({ vip = false }) {
     eventName,
     paymentStatus,
     badgeType,
+    isWaitlisted,
+    waitlistPosition,
   } = data;
 
   const isVip = vip || badgeType === 'vip';
-
   const fullName = `${firstName} ${lastName}`;
 
+  // ── Waitlist confirmation ─────────────────────────────────────────────────
+  if (isWaitlisted) {
+    return (
+      <div className="conf-page">
+        <div className="conf-card">
+          <div className="conf-header" style={{ background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)' }}>
+            <div className="conf-check" style={{ background: 'rgba(255,255,255,0.2)', border: '2px solid rgba(255,255,255,0.6)' }}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                   strokeWidth="3" width="28" height="28">
+                <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+              </svg>
+            </div>
+            {isVip && <VipBadgeDisplay />}
+            <h1 className="conf-header-title">You're on the Waitlist</h1>
+            <p className="conf-header-sub">
+              {waitlistPosition
+                ? `You're #${waitlistPosition} in line, ${firstName}.`
+                : `You've been added to the waitlist, ${firstName}.`}
+            </p>
+          </div>
+
+          <div className="conf-body">
+            <div className="conf-email-note" style={{ borderColor: '#fcd34d', background: '#fffbeb' }}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2"
+                   width="15" height="15" style={{ flexShrink: 0 }}>
+                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+                <polyline points="22,6 12,13 2,6"/>
+              </svg>
+              A waitlist confirmation has been sent to <strong>{email}</strong>
+            </div>
+
+            <div className="conf-info-section">
+              <div className="conf-info-title">Waitlist Details</div>
+              <div className="conf-info-grid">
+                <div>
+                  <div className="conf-info-label">Name</div>
+                  <div className="conf-info-value">{fullName}</div>
+                </div>
+                {eventName && (
+                  <div>
+                    <div className="conf-info-label">Event</div>
+                    <div className="conf-info-value">{eventName}</div>
+                  </div>
+                )}
+                {sessionName && (
+                  <div>
+                    <div className="conf-info-label">Session</div>
+                    <div className="conf-info-value">{sessionName}</div>
+                  </div>
+                )}
+                {sessionDate && (
+                  <div>
+                    <div className="conf-info-label">Date</div>
+                    <div className="conf-info-value">{fmtDate(sessionDate)}</div>
+                  </div>
+                )}
+                {waitlistPosition && (
+                  <div>
+                    <div className="conf-info-label">Waitlist Position</div>
+                    <div className="conf-info-value" style={{ fontWeight: 700, fontSize: 18 }}>
+                      #{waitlistPosition}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div style={{
+              background: '#fffbeb', border: '1px solid #fcd34d',
+              borderRadius: 'var(--radius)', padding: '14px 16px',
+              fontSize: 13.5, color: '#92400e', lineHeight: 1.5,
+            }}>
+              <strong>What happens next?</strong><br />
+              If a confirmed attendee cancels, you'll be automatically moved up the list.
+              The event organizer will contact you at <strong>{email}</strong> if a spot becomes available.
+              No payment is required until you're confirmed.
+            </div>
+
+            <div className="conf-actions" style={{ marginTop: 20 }}>
+              <Link to={isVip ? `/${orgSlug}/vip` : `/${orgSlug}`} className="btn btn-outline btn-lg">
+                Register Another Attendee
+              </Link>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Confirmed registration ────────────────────────────────────────────────
   return (
     <div className="conf-page">
       <div className="conf-card">

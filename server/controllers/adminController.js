@@ -6,6 +6,7 @@ const PDFDocument = require('pdfkit');
 const {
   Organization, Event, PageConfig, EmailTemplate, Registrant, BadgeConfig,
   VipRegistrant, VipPageConfig, VipEmailTemplate,
+  WaitlistRegistrant, VipWaitlistRegistrant,
   Title, Country, HearAbout,
 } = require('../models');
 const { sendTestEmail: sendTestEmailService } = require('../services/emailService');
@@ -830,9 +831,14 @@ async function getDashboardStats(req, res) {
 
 async function updatePaymentSettings(req, res) {
   try {
-    const { paymentEnabled, ticketPrice, currency } = req.body;
+    const {
+      paymentEnabled, ticketPrice, currency,
+      vipPaymentEnabled, vipTicketPrice, vipCurrency,
+    } = req.body;
 
     const updates = {};
+
+    // ── Standard registration payment ────────────────────────
     if (paymentEnabled !== undefined) {
       updates.paymentEnabled = Boolean(paymentEnabled);
     }
@@ -849,6 +855,25 @@ async function updatePaymentSettings(req, res) {
         return res.status(400).json({ message: 'currency must be a 3-letter ISO code (e.g. USD)' });
       }
       updates.currency = cur;
+    }
+
+    // ── VIP registration payment ─────────────────────────────
+    if (vipPaymentEnabled !== undefined) {
+      updates.vipPaymentEnabled = Boolean(vipPaymentEnabled);
+    }
+    if (vipTicketPrice !== undefined) {
+      const price = Number(vipTicketPrice);
+      if (isNaN(price) || price < 0) {
+        return res.status(400).json({ message: 'vipTicketPrice must be a non-negative number' });
+      }
+      updates.vipTicketPrice = price;
+    }
+    if (vipCurrency !== undefined) {
+      const cur = String(vipCurrency).toUpperCase().trim();
+      if (!/^[A-Z]{3}$/.test(cur)) {
+        return res.status(400).json({ message: 'vipCurrency must be a 3-letter ISO code (e.g. USD)' });
+      }
+      updates.vipCurrency = cur;
     }
 
     const event = await Event.findOneAndUpdate(
@@ -1412,6 +1437,68 @@ async function downloadImportTemplate(req, res) {
   }
 }
 
+// ─── Waitlist — standard ─────────────────────────────────────────────────────
+
+async function listWaitlist(req, res) {
+  try {
+    const id    = orgId(req);
+    const page  = Math.max(1, parseInt(req.query.page)  || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
+    const skip  = (page - 1) * limit;
+    const { search, sessionId, status } = req.query;
+
+    const filter = { organizationId: id };
+    if (sessionId && mongoose.isValidObjectId(sessionId)) {
+      filter.sessionId = new mongoose.Types.ObjectId(sessionId);
+    }
+    if (status) filter.status = status;
+    if (search) {
+      const re = new RegExp(escapeRegex(search.trim()), 'i');
+      filter.$or = [{ firstName: re }, { lastName: re }, { email: re }];
+    }
+
+    const [entries, total] = await Promise.all([
+      WaitlistRegistrant.find(filter).sort({ waitlistPosition: 1, createdAt: 1 }).skip(skip).limit(limit),
+      WaitlistRegistrant.countDocuments(filter),
+    ]);
+
+    res.json({ data: entries, total, page, limit, pages: Math.ceil(total / limit) });
+  } catch (err) {
+    res.status(500).json({ message: 'Server error', error: err.message });
+  }
+}
+
+// ─── Waitlist — VIP ──────────────────────────────────────────────────────────
+
+async function listVipWaitlist(req, res) {
+  try {
+    const id    = orgId(req);
+    const page  = Math.max(1, parseInt(req.query.page)  || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
+    const skip  = (page - 1) * limit;
+    const { search, sessionId, status } = req.query;
+
+    const filter = { organizationId: id };
+    if (sessionId && mongoose.isValidObjectId(sessionId)) {
+      filter.sessionId = new mongoose.Types.ObjectId(sessionId);
+    }
+    if (status) filter.status = status;
+    if (search) {
+      const re = new RegExp(escapeRegex(search.trim()), 'i');
+      filter.$or = [{ firstName: re }, { lastName: re }, { email: re }];
+    }
+
+    const [entries, total] = await Promise.all([
+      VipWaitlistRegistrant.find(filter).sort({ waitlistPosition: 1, createdAt: 1 }).skip(skip).limit(limit),
+      VipWaitlistRegistrant.countDocuments(filter),
+    ]);
+
+    res.json({ data: entries, total, page, limit, pages: Math.ceil(total / limit) });
+  } catch (err) {
+    res.status(500).json({ message: 'Server error', error: err.message });
+  }
+}
+
 module.exports = {
   getEvent, updateEvent, addSession, updateSession, deleteSession,
   getPageConfig, updatePageConfig, uploadLogo, uploadPageBanner, uploadVipPageBanner,
@@ -1422,6 +1509,7 @@ module.exports = {
   getBadgeConfig, updateBadgeConfig, uploadBadgeBackground,
   getVipPageConfig, updateVipPageConfig, uploadVipLogo,
   listVipRegistrants, exportVipRegistrants, searchVipRegistrant, checkInVip, checkOutVip,
+  listWaitlist, listVipWaitlist,
   getLookups,
   getDashboardStats,
   importRegistrants,

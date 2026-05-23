@@ -7,6 +7,7 @@ const sessionSchema = new Schema(
     capacity:          { type: Number, required: true, min: 0 },
     waitlistCapacity:  { type: Number, default: 0, min: 0 },
     registered:        { type: Number, default: 0, min: 0 },
+    waitlisted:        { type: Number, default: 0, min: 0 },
   },
   { _id: true }
 );
@@ -39,6 +40,9 @@ const eventSchema = new Schema(
     ticketPrice:          { type: Number, default: 0, min: 0 },
     currency:             { type: String, default: 'USD', uppercase: true, trim: true },
     paymentEnabled:       { type: Boolean, default: false },
+    vipTicketPrice:       { type: Number, default: 0, min: 0 },
+    vipCurrency:          { type: String, default: 'USD', uppercase: true, trim: true },
+    vipPaymentEnabled:    { type: Boolean, default: false },
     sessions:             { type: [sessionSchema], default: [] },
   },
   { timestamps: true }

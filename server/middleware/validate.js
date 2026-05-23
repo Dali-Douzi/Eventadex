@@ -102,6 +102,19 @@ const paymentValidators = [
     .trim()
     .matches(/^[A-Z]{3}$/)
     .withMessage('Currency must be a 3-letter ISO code (e.g. USD)'),
+  body('vipPaymentEnabled')
+    .optional()
+    .isBoolean()
+    .withMessage('vipPaymentEnabled must be a boolean'),
+  body('vipTicketPrice')
+    .optional()
+    .isFloat({ min: 0 })
+    .withMessage('VIP ticket price must be a non-negative number'),
+  body('vipCurrency')
+    .optional()
+    .trim()
+    .matches(/^[A-Z]{3}$/)
+    .withMessage('VIP currency must be a 3-letter ISO code (e.g. USD)'),
 ];
 
 /** Routes with :id or :sessionId path params */
