@@ -59,6 +59,17 @@ input, select, textarea { font-family: inherit; font-size: inherit; }
   padding: 64px 20px 40px;
 }
 
+/* Embed mode — no outer padding, transparent bg, no min-height */
+.reg-page.reg-page-embed {
+  padding: 0;
+  min-height: unset;
+  background: transparent;
+}
+.reg-page.reg-page-embed .form-dock {
+  border-radius: 0;
+  box-shadow: none;
+}
+
 /* ── Form dock ────────────────────────────────────────────────────────────── */
 .form-dock {
   width: 100%;
@@ -894,6 +905,79 @@ select.field-input {
   gap: 10px;
 }
 
+/* ── Confirmation: calendar & share sections ─────────────────────────────── */
+.conf-section {
+  margin-bottom: 20px;
+}
+
+.conf-section-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--text-light);
+  margin-bottom: 10px;
+}
+
+/* Calendar buttons */
+.conf-cal-buttons {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.conf-cal-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-medium);
+  cursor: pointer;
+  text-decoration: none;
+  transition: border-color .15s, color .15s, background .15s;
+  white-space: nowrap;
+}
+
+.conf-cal-btn:hover {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+  background: var(--primary-light);
+}
+
+/* Social share row */
+.conf-share-row {
+  display: flex;
+  gap: 10px;
+}
+
+.conf-share-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  text-decoration: none;
+  transition: opacity .15s, transform .1s;
+  flex-shrink: 0;
+}
+
+.conf-share-btn:hover { opacity: .85; transform: scale(1.07); }
+
+.conf-share-wa { background: #25d366; color: #fff; }
+.conf-share-x  { background: #000;    color: #fff; }
+.conf-share-li { background: #0a66c2; color: #fff; }
+
 /* ── Utility ──────────────────────────────────────────────────────────────── */
 .text-error   { color: var(--text-error);   }
 .text-success { color: var(--text-success); }
@@ -1034,6 +1118,9 @@ select.field-input {
 .reg-page.vip-mode .conf-info-label   { color: #9999bb; }
 .reg-page.vip-mode .conf-info-value   { color: #e8e8f0; }
 .reg-page.vip-mode .conf-email-note   { background: #12122a; border-color: #2d2d4a; color: #c8c8e0; }
+.reg-page.vip-mode .conf-section-title { color: #9999bb; }
+.reg-page.vip-mode .conf-cal-btn       { border-color: #2d2d4a; color: #c8c8e0; }
+.reg-page.vip-mode .conf-cal-btn:hover { border-color: var(--secondary-color, #e2b96f); color: var(--secondary-color, #e2b96f); background: rgba(226,185,111,.08); }
 
 /* ─── VIP badge in confirmation ───── */
 .conf-vip-badge {

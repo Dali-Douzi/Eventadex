@@ -9,6 +9,7 @@ const {
   handleReminderImageUpload,
   sendTestReminderEmail, triggerReminderNow, clearReminderLogs,
 } = require('../controllers/reminderController');
+const { previewCount, sendAnnouncement } = require('../controllers/announcementController');
 const { adminLimiter } = require('../middleware/rateLimits');
 const {
   validate,
@@ -24,10 +25,10 @@ const {
   getEmailTemplate, updateEmailTemplate, uploadEmailImage, sendTestEmail,
   getVipEmailTemplate, updateVipEmailTemplate, uploadVipEmailImage, sendTestVipEmail,
   updatePaymentSettings,
-  listRegistrants, exportRegistrants, searchRegistrant, getRegistrant, checkIn, checkOut,
+  listRegistrants, exportRegistrants, searchRegistrant, getBadgeData, getRegistrant, resendRegistrantEmail, checkIn, checkOut,
   getBadgeConfig, updateBadgeConfig, uploadBadgeBackground,
   getVipPageConfig, updateVipPageConfig, uploadVipLogo,
-  listVipRegistrants, exportVipRegistrants, searchVipRegistrant, checkInVip, checkOutVip,
+  listVipRegistrants, exportVipRegistrants, searchVipRegistrant, getVipRegistrant, resendVipRegistrantEmail, checkInVip, checkOutVip,
   listWaitlist, listVipWaitlist,
   getLookups,
   getDashboardStats,
@@ -70,11 +71,13 @@ router.post ('/vip-email-template/image/:type',    requirePermission('canViewVip
 
 // ── Registrants — specific paths before :id to avoid route shadowing ──────────
 router.get  ('/registrants/export',          requirePermission('canExportData'), exportRegistrants);
+router.get  ('/registrants/badge-data',      getBadgeData);
 router.get  ('/registrants/import-template', downloadImportTemplate);
 router.post ('/registrants/import',          handleImportUpload, importRegistrants);
 router.get  ('/registrants/search',          searchRegistrant);
 router.get  ('/registrants',                 listRegistrants);
-router.get  ('/registrants/:id',  [idParam, validate],  getRegistrant);
+router.get  ('/registrants/:id',         [idParam, validate],  getRegistrant);
+router.post ('/registrants/:id/resend',  [idParam, validate],  resendRegistrantEmail);
 router.patch('/registrants/:id/checkin',  requirePermission('canCheckIn'), [idParam, validate], checkIn);
 router.patch('/registrants/:id/checkout', requirePermission('canCheckIn'), [idParam, validate], checkOut);
 
@@ -93,6 +96,8 @@ router.post ('/vip-page-config/banner/:slot', handleBannerUpload, uploadVipPageB
 router.get  ('/vip-registrants/export',                      requirePermission('canViewVip'), requirePermission('canExportData'), exportVipRegistrants);
 router.get  ('/vip-registrants/search',                      requirePermission('canViewVip'), searchVipRegistrant);
 router.get  ('/vip-registrants',                             requirePermission('canViewVip'), listVipRegistrants);
+router.get  ('/vip-registrants/:id',          requirePermission('canViewVip'), [idParam, validate], getVipRegistrant);
+router.post ('/vip-registrants/:id/resend',   requirePermission('canViewVip'), [idParam, validate], resendVipRegistrantEmail);
 router.patch('/vip-registrants/:id/checkin',  requirePermission('canCheckIn'), [idParam, validate], checkInVip);
 router.patch('/vip-registrants/:id/checkout', requirePermission('canCheckIn'), [idParam, validate], checkOutVip);
 
@@ -108,6 +113,10 @@ router.post  ('/reminder-config/trigger',           triggerReminderNow);
 router.delete('/reminder-config/logs',              clearReminderLogs);
 router.post  ('/reminder-config/image/:type',       handleReminderImageUpload, uploadReminderImage);
 router.delete('/reminder-config/image/:type',       removeReminderImage);
+
+// ── Announcements ─────────────────────────────────────────────────────────────
+router.get ('/announcements/preview', previewCount);
+router.post('/announcements/send',    sendAnnouncement);
 
 // ── Lookups (read-only) ───────────────────────────────────────────────────────
 router.get('/lookups/:type', getLookups);

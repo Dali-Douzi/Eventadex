@@ -334,31 +334,33 @@ function LivePreview({ config }) {
             </button>
           </div>
 
-          {/* Footer */}
-          {(config.footerText || (config.footerLinks || []).length > 0 || config.footerImageUrl) && (
-            <div className="preview-footer">
-              {config.footerText && <p style={{ marginBottom: config.footerLinks?.length ? 6 : 0 }}>{config.footerText}</p>}
-              {(config.footerLinks || []).filter(l => l.label).length > 0 && (
-                <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
-                  {config.footerLinks.filter(l => l.label).map((link, i) => (
-                    <a key={i} style={{ color: headerBg, fontSize: 12 }}>{link.label}</a>
-                  ))}
-                </div>
-              )}
-              {config.footerImageUrl && (
-                <div style={footerImagePadding > 0 ? { padding: footerImagePadding } : {}}>
-                  <img
-                    src={assetUrl(config.footerImageUrl)}
-                    alt="Footer banner"
-                    style={footerImgStyle}
-                    onError={(e) => { e.target.style.display = 'none'; }}
-                  />
-                </div>
-              )}
-            </div>
-          )}
-
         </div>
+
+        {/* Footer image — sits at the same level as the header, full-width */}
+        {config.footerImageUrl && (
+          <div style={footerImagePadding > 0 ? { padding: footerImagePadding } : {}}>
+            <img
+              src={assetUrl(config.footerImageUrl)}
+              alt="Footer banner"
+              style={footerImgStyle}
+              onError={(e) => { e.target.style.display = 'none'; }}
+            />
+          </div>
+        )}
+
+        {/* Footer text / links */}
+        {(config.footerText || (config.footerLinks || []).filter(l => l.label).length > 0) && (
+          <div className="preview-footer">
+            {config.footerText && <p style={{ marginBottom: config.footerLinks?.length ? 6 : 0 }}>{config.footerText}</p>}
+            {(config.footerLinks || []).filter(l => l.label).length > 0 && (
+              <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
+                {config.footerLinks.filter(l => l.label).map((link, i) => (
+                  <a key={i} style={{ color: headerBg, fontSize: 12 }}>{link.label}</a>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
       </div>
     </>

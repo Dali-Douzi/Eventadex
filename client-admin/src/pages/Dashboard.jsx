@@ -15,9 +15,9 @@ function timeAgo(dateStr) {
 
 // ─── Capacity bar colour ──────────────────────────────────────────────────────
 function capColor(pct) {
-  if (pct >= 100) return '#dc2626'; // full
-  if (pct >= 80)  return '#d97706'; // near-full
-  return '#2563eb';                 // normal
+  if (pct >= 100) return '#dc2626';
+  if (pct >= 80)  return '#d97706';
+  return '#2563eb';
 }
 
 // ─── Stat card ────────────────────────────────────────────────────────────────
@@ -31,6 +31,99 @@ function StatCard({ label, value, icon, iconClass }) {
         </div>
         <div className={`stat-icon ${iconClass}`}>{icon}</div>
       </div>
+    </div>
+  );
+}
+
+// ─── Registrations trend chart (pure SVG, no library) ────────────────────────
+function TrendChart({ data }) {
+  if (!data || data.length === 0) return null;
+
+  const PAD   = { top: 24, right: 16, bottom: 38, left: 32 };
+  const W     = 640;
+  const H     = 170;
+  const cW    = W - PAD.left - PAD.right;   // chart area width
+  const cH    = H - PAD.top  - PAD.bottom;  // chart area height
+  const n     = data.length;
+  const max   = Math.max(1, ...data.map((d) => d.count));
+  const slotW = cW / n;
+  const barW  = Math.max(4, slotW - 6);
+  const total = data.reduce((s, d) => s + d.count, 0);
+
+  // Y-axis tick values: 0, half, max (round up)
+  const yTicks = [0, Math.ceil(max / 2), max];
+
+  function barX(i) { return PAD.left + i * slotW + (slotW - barW) / 2; }
+  function barH(count) { return Math.max(count > 0 ? 3 : 0, (count / max) * cH); }
+  function barY(count) { return PAD.top + cH - barH(count); }
+
+  function fmtLabel(dateStr, i) {
+    // Show every other label when there are 14 bars
+    if (n >= 12 && i % 2 !== 0) return null;
+    const d = new Date(dateStr + 'T00:00:00');
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  }
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 12 }}>
+        <span className="dash-section-title" style={{ marginBottom: 0 }}>Registrations — Last 14 Days</span>
+        <span style={{ fontSize: 12, color: '#64748b' }}>{total} total</span>
+      </div>
+      <svg viewBox={`0 0 ${W} ${H}`} width="100%" aria-label="Registration trend chart">
+
+        {/* Grid lines + y-axis labels */}
+        {yTicks.map((v) => {
+          const y = PAD.top + cH - (v / max) * cH;
+          return (
+            <g key={v}>
+              <line
+                x1={PAD.left} y1={y} x2={W - PAD.right} y2={y}
+                stroke={v === 0 ? '#cbd5e1' : '#e2e8f0'} strokeWidth="1"
+              />
+              <text x={PAD.left - 4} y={y + 4} textAnchor="end" fontSize="10" fill="#94a3b8">
+                {v}
+              </text>
+            </g>
+          );
+        })}
+
+        {/* Bars */}
+        {data.map((d, i) => {
+          const x = barX(i);
+          const h = barH(d.count);
+          const y = barY(d.count);
+          return (
+            <g key={d.date}>
+              <rect x={x} y={y} width={barW} height={h} rx="3" fill="#3b82f6" opacity="0.82" />
+              {d.count > 0 && (
+                <text
+                  x={x + barW / 2} y={y - 5}
+                  textAnchor="middle" fontSize="9.5" fill="#1e293b" fontWeight="600"
+                >
+                  {d.count}
+                </text>
+              )}
+            </g>
+          );
+        })}
+
+        {/* X-axis labels */}
+        {data.map((d, i) => {
+          const label = fmtLabel(d.date, i);
+          if (!label) return null;
+          return (
+            <text
+              key={d.date}
+              x={barX(i) + barW / 2}
+              y={H - 6}
+              textAnchor="middle" fontSize="9.5" fill="#64748b"
+            >
+              {label}
+            </text>
+          );
+        })}
+      </svg>
     </div>
   );
 }
@@ -90,6 +183,12 @@ export default function Dashboard() {
         ))}
       </div>
       <div className="dash-grid" style={{ marginTop: 24 }}>
+        <div className="sk-card" style={{ minHeight: 200, gridColumn: '1 / -1' }}>
+          <div className="skeleton sk-text" style={{ width: '40%', marginBottom: 16 }} />
+          <div className="skeleton" style={{ height: 140, borderRadius: 6 }} />
+        </div>
+      </div>
+      <div className="dash-grid" style={{ marginTop: 16 }}>
         <div className="sk-card" style={{ minHeight: 180 }}>
           <div className="skeleton sk-text" style={{ width: '40%', marginBottom: 16 }} />
           {[...Array(3)].map((_, i) => (
@@ -125,12 +224,13 @@ export default function Dashboard() {
   );
 
   const {
-    totalRegistrants = 0,
-    checkedInToday   = 0,
-    sessionsCount    = 0,
-    eventStatus      = 'draft',
-    sessions         = [],
+    totalRegistrants  = 0,
+    checkedInToday    = 0,
+    sessionsCount     = 0,
+    eventStatus       = 'draft',
+    sessions          = [],
     recentRegistrants = [],
+    trend             = [],
   } = stats;
 
   return (
@@ -172,8 +272,15 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {/* ── Trend chart ─────────────────────────── */}
+      {trend.length > 0 && (
+        <div className="dash-section" style={{ marginTop: 24, marginBottom: 0 }}>
+          <TrendChart data={trend} />
+        </div>
+      )}
+
       {/* ── Bottom grid ─────────────────────────── */}
-      <div className="dash-grid">
+      <div className="dash-grid" style={{ marginTop: 16 }}>
 
         {/* Session capacity bars */}
         <div className="dash-section">
@@ -182,7 +289,7 @@ export default function Dashboard() {
             <p className="dash-section-empty">No sessions configured yet.</p>
           ) : (
             sessions.map((s) => {
-              const pct  = s.capacity > 0 ? Math.min(100, Math.round((s.registered / s.capacity) * 100)) : 0;
+              const pct   = s.capacity > 0 ? Math.min(100, Math.round((s.registered / s.capacity) * 100)) : 0;
               const color = capColor(pct);
               return (
                 <div key={s._id} className="cap-item">

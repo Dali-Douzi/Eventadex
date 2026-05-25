@@ -36,7 +36,7 @@ function toSmallestUnit(amount, currency) {
 //      values from sessionStorage, and either jumps to review (success) or
 //      stays on the payment step (failure) with paymentFailed=true.
 // ─────────────────────────────────────────────────────────────────────────────
-export default function PaymentStep({ orgSlug, vip = false, amount, currency, formValues, onBack, onNext, paymentFailed = false, isWaitlist = false }) {
+export default function PaymentStep({ orgSlug, vip = false, amount, currency, formValues, onBack, onNext, paymentFailed = false, isWaitlist = false, isEmbed = false }) {
   const initRef        = useRef(false);
   const [loading, setLoading] = useState(true);
 
@@ -45,10 +45,11 @@ export default function PaymentStep({ orgSlug, vip = false, amount, currency, fo
     if (initRef.current) return;
     initRef.current = true;
 
-    // 1. Persist form values so they survive the Moyasar redirect
+    // 1. Persist form values so they survive the Moyasar redirect.
+    //    isEmbed is stored so RegistrationForm can restore embed mode after redirect.
     sessionStorage.setItem(
       'moyasar_pending',
-      JSON.stringify({ formValues, slug: orgSlug })
+      JSON.stringify({ formValues, slug: orgSlug, isEmbed })
     );
 
     // 2. Inject Moyasar CSS (once)

@@ -563,7 +563,11 @@ export default function RegistrationForm({ vip = false }) {
   const [captchaToken, setCaptchaToken] = useState('');
 
   // ── Embed mode ────────────────────────────────────────────
-  const isEmbedded = new URLSearchParams(window.location.search).has('embed');
+  // Initialised from the URL param; can also be restored from sessionStorage
+  // after a Moyasar payment redirect (which drops ?embed=true from the URL).
+  const [isEmbedded, setIsEmbedded] = useState(
+    () => new URLSearchParams(window.location.search).has('embed')
+  );
 
   // Broadcast height to parent when embedded so iframe resizes automatically
   useEffect(() => {
@@ -611,10 +615,13 @@ export default function RegistrationForm({ vip = false }) {
           const raw = sessionStorage.getItem('moyasar_pending');
           if (raw) {
             try {
-              const { formValues, slug } = JSON.parse(raw);
+              const { formValues, slug, isEmbed } = JSON.parse(raw);
               if (slug === orgSlug) {
                 sessionStorage.removeItem('moyasar_pending');
-                window.history.replaceState({}, '', window.location.pathname);
+                // Restore ?embed=true in URL if this was an embedded payment
+                const cleanPath = window.location.pathname + (isEmbed ? '?embed=true' : '');
+                window.history.replaceState({}, '', cleanPath);
+                if (isEmbed) setIsEmbedded(true);
 
                 if (moyasarStatus === 'paid') {
                   setValues({ ...init, ...formValues, paymentIntentId: moyasarId });
@@ -753,11 +760,21 @@ export default function RegistrationForm({ vip = false }) {
         : `/api/public/${orgSlug}/register`;
       const { data } = await api.post(registerUrl, { ...values, captchaToken });
       // Server returns waitlisted:true when the session filled up
+      const embedSuffix = isEmbedded ? '?embed=true' : '';
       const confirmPath = vip
-        ? `/${orgSlug}/vip/confirmation/${data.registrantId}`
-        : `/${orgSlug}/confirmation/${data.registrantId}`;
+        ? `/${orgSlug}/vip/confirmation/${data.registrantId}${embedSuffix}`
+        : `/${orgSlug}/confirmation/${data.registrantId}${embedSuffix}`;
       navigate(confirmPath);
     } catch (err) {
+      // Already registered — redirect straight to their existing confirmation
+      if (err.response?.status === 409 && err.response?.data?.alreadyRegistered) {
+        const embedSuffix = isEmbedded ? '?embed=true' : '';
+        const confirmPath = vip
+          ? `/${orgSlug}/vip/confirmation/${err.response.data.registrantId}${embedSuffix}`
+          : `/${orgSlug}/confirmation/${err.response.data.registrantId}${embedSuffix}`;
+        navigate(confirmPath);
+        return;
+      }
       const msg = err.response?.data?.error || 'Registration failed. Please try again.';
       setSubmitError(msg);
       captchaRef.current?.reset();
@@ -880,7 +897,7 @@ export default function RegistrationForm({ vip = false }) {
   const isLastStep  = stepIdx === steps.length - 1;
 
   return (
-    <div className={`reg-page${vip ? ' vip-mode' : ''}`} style={pageBgStyle}>
+    <div className={`reg-page${vip ? ' vip-mode' : ''}${isEmbedded ? ' reg-page-embed' : ''}`} style={pageBgStyle}>
       <div className="form-dock">
 
         {/* ── Header ────────────────────────────── */}
@@ -963,6 +980,7 @@ export default function RegistrationForm({ vip = false }) {
                 onNext={() => { setStepIdx((i) => i + 1); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
                 paymentFailed={paymentFailed}
                 isWaitlist={isWaitlistMode}
+                isEmbed={isEmbedded}
               />
             )}
 
@@ -1012,20 +1030,22 @@ export default function RegistrationForm({ vip = false }) {
           </div>{/* end reg-card-body */}
         </div>{/* end reg-card */}
 
-        {/* ── Footer ──────────────────────────── */}
-        {!isEmbedded && (footerText || footerLinks.length > 0 || footerImageUrl) && (
+        {/* ── Footer image — full-width, same level as header ── */}
+        {!isEmbedded && footerImageUrl && (
+          <div style={footerImagePadding > 0 ? { padding: footerImagePadding } : {}}>
+            <img
+              src={assetUrl(footerImageUrl)}
+              alt="Footer banner"
+              className="reg-footer-banner"
+              style={footerImgStyle}
+              onError={(e) => { e.target.style.display = 'none'; }}
+            />
+          </div>
+        )}
+
+        {/* ── Footer text / links ──────────────── */}
+        {!isEmbedded && (footerText || footerLinks.filter((l) => l.label).length > 0) && (
           <footer className="reg-footer">
-            {footerImageUrl && (
-              <div style={footerImagePadding > 0 ? { padding: footerImagePadding } : {}}>
-                <img
-                  src={assetUrl(footerImageUrl)}
-                  alt="Footer banner"
-                  className="reg-footer-banner"
-                  style={footerImgStyle}
-                  onError={(e) => { e.target.style.display = 'none'; }}
-                />
-              </div>
-            )}
             {footerText && <p className="reg-footer-text">{footerText}</p>}
             {footerLinks.filter((l) => l.label).length > 0 && (
               <div className="reg-footer-links">

@@ -43,6 +43,7 @@ const eventSchema = new Schema(
     vipTicketPrice:       { type: Number, default: 0, min: 0 },
     vipCurrency:          { type: String, default: 'USD', uppercase: true, trim: true },
     vipPaymentEnabled:    { type: Boolean, default: false },
+    embedUrl:             { type: String, default: '' },
     sessions:             { type: [sessionSchema], default: [] },
   },
   { timestamps: true }

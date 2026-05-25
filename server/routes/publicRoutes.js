@@ -9,6 +9,7 @@ const {
   getRegistrantDetail,
   getVipFormConfig,
   registerVip,
+  resendConfirmation,
 } = require('../controllers/publicController');
 
 const { registrationLimiter }                    = require('../middleware/rateLimits');
@@ -55,6 +56,12 @@ router.get(
   '/:orgSlug/registrant/:id',
   [param('id').isMongoId().withMessage('id must be a valid ID'), validate],
   getRegistrantDetail
+);
+
+router.post(
+  '/:orgSlug/registrant/:id/resend',
+  [param('id').isMongoId().withMessage('id must be a valid ID'), validate],
+  resendConfirmation
 );
 
 /**

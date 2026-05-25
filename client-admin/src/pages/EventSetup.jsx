@@ -1,6 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import api from '../api/axios';
 import { useToast } from '../context/ToastContext';
+import { useAuth } from '../context/AuthContext';
+
+const USER_APP_URL = import.meta.env.VITE_USER_APP_URL || 'http://localhost:3002';
 
 // ─── Event type options ───────────────────────────────────────────────────────
 const EVENT_TYPES = [
@@ -92,7 +95,9 @@ function SessionModal({ mode, initial, onSave, onClose, saving }) {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function EventSetup() {
-  const toast = useToast();
+  const toast      = useToast();
+  const { user }   = useAuth();
+  const orgSlug    = user?.slug || '';
   const [event, setEvent]         = useState(null);
   const [loading, setLoading]     = useState(true);
   const [saveState, setSaveState] = useState('idle'); // idle|saving|saved|error
@@ -109,6 +114,11 @@ export default function EventSetup() {
   const [payForm, setPayForm]       = useState({ paymentEnabled: false, ticketPrice: '', currency: 'USD' });
   const [vipPayForm, setVipPayForm] = useState({ vipPaymentEnabled: false, vipTicketPrice: '', vipCurrency: 'USD' });
   const [payState, setPayState]     = useState('idle'); // idle|saving|saved|error
+
+  // Embed widget
+  const [embedUrl, setEmbedUrl]       = useState('');
+  const [copied, setCopied]           = useState(false);
+  const snippetRef                    = useRef(null);
 
   // ── Fetch ──────────────────────────────────────────────────
   useEffect(() => {
@@ -134,6 +144,7 @@ export default function EventSetup() {
           vipTicketPrice:    data.vipTicketPrice    ? String(data.vipTicketPrice) : '',
           vipCurrency:       data.vipCurrency       || 'USD',
         });
+        setEmbedUrl(data.embedUrl || '');
       })
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -161,6 +172,7 @@ export default function EventSetup() {
         endDate:              form.endDate     || undefined,
         registrationOpenDate: form.registrationOpenDate || undefined,
         status:               form.status,
+        embedUrl:             embedUrl.trim(),
       });
       setEvent(data);
       setSaveState('saved');
@@ -240,6 +252,19 @@ export default function EventSetup() {
       setPayState('error');
       setTimeout(() => setPayState('idle'), 3000);
     }
+  }
+
+  // ── Copy embed snippet ─────────────────────────────────────
+  const embedSnippet = orgSlug
+    ? `<script src="${USER_APP_URL}/embed.js" data-slug="${orgSlug}"></script>`
+    : '';
+
+  function handleCopySnippet() {
+    if (!embedSnippet) return;
+    navigator.clipboard.writeText(embedSnippet).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    });
   }
 
   const saveBtnClass = saveState === 'saved'  ? 'btn btn-sm btn-success'
@@ -587,6 +612,137 @@ export default function EventSetup() {
           {payState === 'saved' && (
             <span style={{ fontSize: 12.5, color: '#16a34a' }}>Payment settings updated.</span>
           )}
+        </div>
+      </div>
+
+      {/* ── Website Embed ────────────────────── */}
+      <div className="event-form-card" style={{ marginTop: 24 }}>
+        <div className="event-form-title" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+               width="18" height="18">
+            <polyline points="16 18 22 12 16 6"/>
+            <polyline points="8 6 2 12 8 18"/>
+          </svg>
+          Embed on Your Website
+        </div>
+
+        {/* ── What is this ── */}
+        <p style={{ fontSize: 13.5, color: 'var(--text-medium)', marginBottom: 20, lineHeight: 1.6 }}>
+          Add your registration form directly to any page on your website — no redirects,
+          no external links. Attendees register without ever leaving your site.
+        </p>
+
+        {/* ── Step-by-step tutorial ── */}
+        <div style={{
+          background: '#f8fafc', border: '1px solid var(--border)',
+          borderRadius: 'var(--radius)', padding: '18px 20px', marginBottom: 22,
+        }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-dark)', marginBottom: 14, letterSpacing: '0.01em' }}>
+            How to embed the form — 2 steps
+          </div>
+
+          {/* Step 1 */}
+          <div style={{ display: 'flex', gap: 14, marginBottom: 16 }}>
+            <div style={{
+              flexShrink: 0, width: 26, height: 26, borderRadius: '50%',
+              background: 'var(--primary-color)', color: '#fff',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 12, fontWeight: 700,
+            }}>1</div>
+            <div>
+              <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text-dark)', marginBottom: 4 }}>
+                Copy the snippet below
+              </div>
+              <div style={{ fontSize: 13, color: 'var(--text-medium)', lineHeight: 1.55 }}>
+                It's one single line of code. That's all you need.
+              </div>
+            </div>
+          </div>
+
+          {/* Step 2 */}
+          <div style={{ display: 'flex', gap: 14 }}>
+            <div style={{
+              flexShrink: 0, width: 26, height: 26, borderRadius: '50%',
+              background: 'var(--primary-color)', color: '#fff',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 12, fontWeight: 700,
+            }}>2</div>
+            <div>
+              <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text-dark)', marginBottom: 4 }}>
+                Paste it on your website page
+              </div>
+              <div style={{ fontSize: 13, color: 'var(--text-medium)', lineHeight: 1.55 }}>
+                Open the page where you want the form to appear. Paste the snippet in the
+                HTML editor right where you want the form to sit. On <strong>WordPress</strong>,
+                use a Custom HTML block. On <strong>Wix / Squarespace</strong>, use an Embed
+                or Custom Code block. On any other platform, paste it into the page's HTML.
+                The form will appear there automatically — no other setup needed.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* ── Generated snippet ── */}
+        <div className="form-group" style={{ marginBottom: 16 }}>
+          <label className="label">Your embed snippet</label>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'stretch' }}>
+            <input
+              ref={snippetRef}
+              className="input"
+              readOnly
+              value={embedSnippet}
+              style={{
+                fontFamily: 'monospace', fontSize: 12.5,
+                background: '#0f172a', color: '#7dd3fc',
+                borderColor: '#334155', cursor: 'text',
+                flex: 1,
+              }}
+              onFocus={(e) => e.target.select()}
+            />
+            <button
+              className={`btn btn-sm ${copied ? 'btn-success' : 'btn-primary'}`}
+              onClick={handleCopySnippet}
+              style={{ flexShrink: 0, minWidth: 80 }}
+              disabled={!orgSlug}
+            >
+              {copied ? (
+                <>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                       strokeWidth="3" width="13" height="13">
+                    <polyline points="20 6 9 17 4 12"/>
+                  </svg>
+                  Copied!
+                </>
+              ) : (
+                <>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                       strokeWidth="2" width="13" height="13">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                  </svg>
+                  Copy
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+
+        {/* ── Your page URL (optional, for organizer's reference) ── */}
+        <div className="form-group" style={{ marginBottom: 0 }}>
+          <label className="label">
+            Your website page URL
+            <span style={{ fontWeight: 400, color: 'var(--text-light)', marginLeft: 6 }}>(optional — for your reference)</span>
+          </label>
+          <input
+            className="input"
+            type="url"
+            value={embedUrl}
+            onChange={(e) => setEmbedUrl(e.target.value)}
+            placeholder="https://yourwebsite.com/events/register"
+          />
+          <p style={{ marginTop: 6, fontSize: 12.5, color: 'var(--text-light)' }}>
+            Paste the URL of the page where you placed the snippet. Saved with your event details.
+          </p>
         </div>
       </div>
 

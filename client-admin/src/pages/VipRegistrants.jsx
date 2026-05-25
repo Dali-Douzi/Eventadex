@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import api from '../api/axios';
-import AttendeeCard, { CheckInBadge, PaymentBadge } from '../components/AttendeeCard';
+import { CheckInBadge } from '../components/AttendeeCard';
 import { useToast } from '../context/ToastContext';
 
 function fmtDate(v) {
@@ -13,77 +14,10 @@ function VipBadge() {
   return <span className="badge-vip">VIP</span>;
 }
 
-// ─── VIP registrant detail drawer ────────────────────────────────────────────
-function VipRegistrantDrawer({ registrant, sessions, onClose, onUpdate }) {
-  const [working, setWorking] = useState('');
-  const toast = useToast();
-
-  async function doCheckIn() {
-    setWorking('in');
-    try {
-      const { data } = await api.patch(`/api/admin/vip-registrants/${registrant._id}/checkin`);
-      onUpdate(data);
-      toast(`${data.firstName} ${data.lastName} checked in`, 'success');
-    } catch (err) {
-      toast(err.response?.data?.message || 'Check-in failed', 'error');
-    } finally {
-      setWorking('');
-    }
-  }
-
-  async function doCheckOut() {
-    setWorking('out');
-    try {
-      const { data } = await api.patch(`/api/admin/vip-registrants/${registrant._id}/checkout`);
-      onUpdate(data);
-      toast(`${data.firstName} ${data.lastName} checked out`, 'success');
-    } catch (err) {
-      toast(err.response?.data?.message || 'Check-out failed', 'error');
-    } finally {
-      setWorking('');
-    }
-  }
-
-  return (
-    <>
-      <div className="drawer-overlay" onClick={onClose} />
-      <div className="drawer">
-        <div className="drawer-header">
-          <span className="drawer-title">
-            VIP Registrant Details
-            <VipBadge />
-          </span>
-          <button className="modal-close" onClick={onClose}>×</button>
-        </div>
-        <div className="drawer-body">
-          <AttendeeCard registrant={registrant} sessions={sessions} />
-
-          <div className="checkin-actions" style={{ marginTop: 20 }}>
-            {!registrant.checkedIn && (
-              <button className="btn-checkin-in" onClick={doCheckIn} disabled={working === 'in'}>
-                {working === 'in' ? 'Checking In…' : '✓ Check In'}
-              </button>
-            )}
-            {registrant.checkedIn && !registrant.checkedOut && (
-              <button className="btn-checkin-out" onClick={doCheckOut} disabled={working === 'out'}>
-                {working === 'out' ? 'Checking Out…' : 'Check Out'}
-              </button>
-            )}
-            {registrant.checkedIn && registrant.checkedOut && (
-              <span className="badge badge-gray" style={{ padding: '8px 16px' }}>
-                Checked out
-              </span>
-            )}
-          </div>
-        </div>
-      </div>
-    </>
-  );
-}
-
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function VipRegistrants() {
-  const toast = useToast();
+  const toast    = useToast();
+  const navigate = useNavigate();
   const [rows, setRows]           = useState([]);
   const [total, setTotal]         = useState(0);
   const [page, setPage]           = useState(1);
@@ -92,7 +26,6 @@ export default function VipRegistrants() {
   const [search, setSearch]       = useState('');
   const [sessionFilter, setSessionFilter] = useState('');
   const [sessions, setSessions]   = useState([]);
-  const [selected, setSelected]   = useState(null);
   const [exporting, setExporting] = useState('');
   const [exportOpen, setExportOpen] = useState(false);
   const exportRef = useRef(null);
@@ -166,13 +99,7 @@ export default function VipRegistrants() {
     }
   }
 
-  function openDrawer(r) { setSelected(r); }
-  function closeDrawer()  { setSelected(null); }
-
-  function handleUpdate(updated) {
-    setRows((rs) => rs.map((r) => r._id === updated._id ? updated : r));
-    setSelected(updated);
-  }
+  function openDetail(r) { navigate(`/admin/vip-registrants/${r._id}`); }
 
   function pageNums() {
     const nums = [];
@@ -273,7 +200,7 @@ export default function VipRegistrants() {
                 <tr className="dt-empty-row"><td colSpan={7}>No VIP registrants found.</td></tr>
               ) : (
                 rows.map((r) => (
-                  <tr key={r._id} onClick={() => openDrawer(r)}>
+                  <tr key={r._id} onClick={() => openDetail(r)} style={{ cursor: 'pointer' }}>
                     <td>
                       <div className="dt-name">{r.firstName} {r.lastName}</div>
                     </td>
@@ -290,7 +217,7 @@ export default function VipRegistrants() {
                     </td>
                     <td onClick={(e) => e.stopPropagation()}>
                       <div className="dt-actions">
-                        <button className="btn-icon-sq" title="View details" onClick={() => openDrawer(r)}>
+                        <button className="btn-icon-sq" title="View full profile" onClick={() => openDetail(r)}>
                           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14">
                             <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
                             <circle cx="12" cy="12" r="3"/>
@@ -327,14 +254,6 @@ export default function VipRegistrants() {
         )}
       </div>
 
-      {selected && (
-        <VipRegistrantDrawer
-          registrant={selected}
-          sessions={sessions}
-          onClose={closeDrawer}
-          onUpdate={handleUpdate}
-        />
-      )}
     </div>
   );
 }

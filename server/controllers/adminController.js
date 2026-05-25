@@ -9,7 +9,11 @@ const {
   WaitlistRegistrant, VipWaitlistRegistrant,
   Title, Country, HearAbout,
 } = require('../models');
-const { sendTestEmail: sendTestEmailService } = require('../services/emailService');
+const QRCode = require('qrcode');
+const {
+  sendTestEmail: sendTestEmailService,
+  sendConfirmationEmail,
+} = require('../services/emailService');
 const { uploadToCloudinary } = require('../config/cloudinary');
 
 // ─── Regex-safe search helper ────────────────────────────────────────────────
@@ -54,7 +58,7 @@ async function getEvent(req, res) {
 const EVENT_ALLOWED_FIELDS = [
   'name', 'description', 'eventType', 'startDate', 'endDate',
   'registrationOpenDate', 'status', 'paymentEnabled',
-  'ticketPrice', 'currency',
+  'ticketPrice', 'currency', 'embedUrl',
 ];
 
 async function updateEvent(req, res) {
@@ -715,16 +719,124 @@ async function searchRegistrant(req, res) {
   }
 }
 
+// ─── Batch badge data (for bulk print / PDF generation) ──────────────────────
+async function getBadgeData(req, res) {
+  try {
+    const id = orgId(req);
+    const { sessionId } = req.query;
+
+    const filter = { organizationId: id };
+    if (sessionId && mongoose.isValidObjectId(sessionId)) {
+      filter.sessionId = new mongoose.Types.ObjectId(sessionId);
+    }
+
+    const [registrants, event, pageConfig, badgeConfig] = await Promise.all([
+      Registrant.find(filter)
+        .select('firstName lastName title country qrCode sessionId')
+        .sort({ firstName: 1, lastName: 1 })
+        .lean(),
+      Event.findOne({ organizationId: id }).select('name sessions').lean(),
+      PageConfig.findOne({ organizationId: id }).select('logoUrl').lean(),
+      BadgeConfig.findOne({ organizationId: id }).lean(),
+    ]);
+
+    const sessionMap = {};
+    (event?.sessions || []).forEach((s) => {
+      sessionMap[s._id.toString()] = s.name;
+    });
+
+    const data = registrants.map((r) => ({
+      _id:         r._id,
+      firstName:   r.firstName  || '',
+      lastName:    r.lastName   || '',
+      title:       r.title      || '',
+      country:     r.country    || '',
+      qrCode:      r.qrCode     || '',
+      sessionName: r.sessionId ? (sessionMap[r.sessionId.toString()] || '') : '',
+      eventName:   event?.name  || '',
+      logoUrl:     pageConfig?.logoUrl || null,
+    }));
+
+    res.json({ registrants: data, total: data.length, badgeConfig: badgeConfig || null });
+  } catch (err) {
+    res.status(500).json({ message: 'Server error', error: err.message });
+  }
+}
+
 async function getRegistrant(req, res) {
   try {
     const registrant = await Registrant.findOne({
       _id: req.params.id,
       organizationId: orgId(req),
-    });
+    }).lean();
     if (!registrant) return res.status(404).json({ message: 'Registrant not found' });
-    res.json(registrant);
+
+    // Enrich with event / session / logo / badge config for the detail page
+    const [event, pageConfig, badgeConfig] = await Promise.all([
+      Event.findOne({ organizationId: orgId(req) }).select('name sessions').lean(),
+      PageConfig.findOne({ organizationId: orgId(req) }).select('logoUrl').lean(),
+      BadgeConfig.findOne({ organizationId: orgId(req) }).lean(),
+    ]);
+
+    const session = (event?.sessions || []).find(
+      (s) => s._id?.toString() === registrant.sessionId?.toString()
+    );
+
+    res.json({
+      ...registrant,
+      eventName:   event?.name         || '',
+      sessionName: session?.name       || '',
+      sessionDate: session?.date       || null,
+      logoUrl:     pageConfig?.logoUrl || null,
+      badgeConfig: badgeConfig         || null,
+    });
   } catch (err) {
     res.status(500).json({ message: 'Server error', error: err.message });
+  }
+}
+
+async function resendRegistrantEmail(req, res) {
+  try {
+    const registrant = await Registrant.findOne({
+      _id: req.params.id,
+      organizationId: orgId(req),
+    }).lean();
+    if (!registrant) return res.status(404).json({ message: 'Registrant not found' });
+
+    const id = orgId(req);
+    const [event, emailTemplate, pageConfig, org] = await Promise.all([
+      Event.findOne({ organizationId: id }).lean(),
+      EmailTemplate.findOne({ organizationId: id }),
+      PageConfig.findOne({ organizationId: id }).select('logoUrl').lean(),
+      Organization.findById(id).select('slug').lean(),
+    ]);
+
+    const session = (event?.sessions || []).find(
+      (s) => s._id?.toString() === registrant.sessionId?.toString()
+    ) || null;
+
+    const qrCodeDataUrl = registrant.qrCode
+      ? await QRCode.toDataURL(registrant.qrCode, { width: 300, margin: 1 })
+      : null;
+
+    const baseUrl        = process.env.CLIENT_USER_URL || '';
+    const confirmationUrl = `${baseUrl}/${org?.slug}/confirmation/${registrant._id}`;
+
+    await sendConfirmationEmail({
+      registrant,
+      event:           { name: event?.name || '' },
+      session:         session ? { name: session.name, date: session.date } : null,
+      organization:    { name: '' },
+      emailTemplate,
+      qrCodeDataUrl,
+      logoUrl:         pageConfig?.logoUrl || null,
+      confirmationUrl,
+    });
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[admin] resendRegistrantEmail error:', err.message);
+    res.status(500).json({ message: err.message || 'Failed to resend confirmation email' });
   }
 }
 
@@ -766,7 +878,11 @@ async function getDashboardStats(req, res) {
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
 
-    const [event, totalRegistrants, checkedInToday, recentRegs, sessionCounts] = await Promise.all([
+    const fourteenDaysAgo = new Date();
+    fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 13);
+    fourteenDaysAgo.setHours(0, 0, 0, 0);
+
+    const [event, totalRegistrants, checkedInToday, recentRegs, sessionCounts, trendRaw] = await Promise.all([
       Event.findOne({ organizationId: id }),
       Registrant.countDocuments({ organizationId: id }),
       Registrant.countDocuments({
@@ -781,6 +897,11 @@ async function getDashboardStats(req, res) {
       Registrant.aggregate([
         { $match: { organizationId: new mongoose.Types.ObjectId(id) } },
         { $group: { _id: '$sessionId', count: { $sum: 1 } } },
+      ]),
+      Registrant.aggregate([
+        { $match: { organizationId: new mongoose.Types.ObjectId(id), createdAt: { $gte: fourteenDaysAgo } } },
+        { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } }, count: { $sum: 1 } } },
+        { $sort: { _id: 1 } },
       ]),
     ]);
 
@@ -814,6 +935,17 @@ async function getDashboardStats(req, res) {
       sessionName: r.sessionId ? (sessionMap[r.sessionId.toString()] || '') : '',
     }));
 
+    // Fill all 14 days, inserting 0 for days with no registrations
+    const trendMap = {};
+    trendRaw.forEach(({ _id, count }) => { trendMap[_id] = count; });
+    const trend = [];
+    for (let i = 13; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const key = d.toISOString().slice(0, 10);
+      trend.push({ date: key, count: trendMap[key] || 0 });
+    }
+
     res.json({
       totalRegistrants,
       checkedInToday,
@@ -821,6 +953,7 @@ async function getDashboardStats(req, res) {
       sessionsCount:  sessions.length,
       sessions,
       recentRegistrants,
+      trend,
     });
   } catch (err) {
     res.status(500).json({ message: 'Server error', error: err.message });
@@ -1134,6 +1267,86 @@ async function searchVipRegistrant(req, res) {
     });
   } catch (err) {
     res.status(500).json({ message: 'Server error', error: err.message });
+  }
+}
+
+async function getVipRegistrant(req, res) {
+  try {
+    const registrant = await VipRegistrant.findOne({
+      _id: req.params.id,
+      organizationId: orgId(req),
+    }).lean();
+    if (!registrant) return res.status(404).json({ message: 'VIP registrant not found' });
+
+    const [event, vipPageConfig, badgeConfig] = await Promise.all([
+      Event.findOne({ organizationId: orgId(req) }).select('name sessions').lean(),
+      VipPageConfig.findOne({ organizationId: orgId(req) }).select('logoUrl').lean(),
+      BadgeConfig.findOne({ organizationId: orgId(req) }).lean(),
+    ]);
+
+    const session = (event?.sessions || []).find(
+      (s) => s._id?.toString() === registrant.sessionId?.toString()
+    );
+
+    res.json({
+      ...registrant,
+      eventName:   event?.name           || '',
+      sessionName: session?.name         || '',
+      sessionDate: session?.date         || null,
+      logoUrl:     vipPageConfig?.logoUrl || null,
+      badgeConfig: badgeConfig           || null,
+    });
+  } catch (err) {
+    res.status(500).json({ message: 'Server error', error: err.message });
+  }
+}
+
+async function resendVipRegistrantEmail(req, res) {
+  try {
+    const registrant = await VipRegistrant.findOne({
+      _id: req.params.id,
+      organizationId: orgId(req),
+    }).lean();
+    if (!registrant) return res.status(404).json({ message: 'VIP registrant not found' });
+
+    const id = orgId(req);
+    const [event, vipEmailTemplate, emailTemplate, vipPageConfig, org] = await Promise.all([
+      Event.findOne({ organizationId: id }).lean(),
+      VipEmailTemplate.findOne({ organizationId: id }),
+      EmailTemplate.findOne({ organizationId: id }),
+      VipPageConfig.findOne({ organizationId: id }).select('logoUrl').lean(),
+      Organization.findById(id).select('slug').lean(),
+    ]);
+
+    // Use VIP template if configured; fall back to standard template
+    const template = (vipEmailTemplate?.subject) ? vipEmailTemplate : emailTemplate;
+
+    const session = (event?.sessions || []).find(
+      (s) => s._id?.toString() === registrant.sessionId?.toString()
+    ) || null;
+
+    const qrCodeDataUrl = registrant.qrCode
+      ? await QRCode.toDataURL(registrant.qrCode, { width: 300, margin: 1 })
+      : null;
+
+    const baseUrl        = process.env.CLIENT_USER_URL || '';
+    const confirmationUrl = `${baseUrl}/${org?.slug}/vip/confirmation/${registrant._id}`;
+
+    await sendConfirmationEmail({
+      registrant,
+      event:           { name: event?.name || '' },
+      session:         session ? { name: session.name, date: session.date } : null,
+      organization:    { name: '' },
+      emailTemplate:   template,
+      qrCodeDataUrl,
+      logoUrl:         vipPageConfig?.logoUrl || null,
+      confirmationUrl,
+    });
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[admin] resendVipRegistrantEmail error:', err.message);
+    res.status(500).json({ message: err.message || 'Failed to resend confirmation email' });
   }
 }
 
@@ -1505,10 +1718,10 @@ module.exports = {
   getEmailTemplate, updateEmailTemplate, uploadEmailImage, sendTestEmail,
   getVipEmailTemplate, updateVipEmailTemplate, uploadVipEmailImage, sendTestVipEmail,
   updatePaymentSettings,
-  listRegistrants, exportRegistrants, searchRegistrant, getRegistrant, checkIn, checkOut,
+  listRegistrants, exportRegistrants, searchRegistrant, getBadgeData, getRegistrant, resendRegistrantEmail, checkIn, checkOut,
   getBadgeConfig, updateBadgeConfig, uploadBadgeBackground,
   getVipPageConfig, updateVipPageConfig, uploadVipLogo,
-  listVipRegistrants, exportVipRegistrants, searchVipRegistrant, checkInVip, checkOutVip,
+  listVipRegistrants, exportVipRegistrants, searchVipRegistrant, getVipRegistrant, resendVipRegistrantEmail, checkInVip, checkOutVip,
   listWaitlist, listVipWaitlist,
   getLookups,
   getDashboardStats,

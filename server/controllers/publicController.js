@@ -547,11 +547,20 @@ async function register(req, res) {
     });
 
   } catch (err) {
-    // Duplicate registration (unique index: orgId + eventId + email)
+    // Duplicate registration — find their existing record and let the client redirect
     if (err.code === 11000) {
-      return res.status(409).json({
-        error: 'This email address is already registered for this event',
-      });
+      try {
+        const existing = org
+          ? await Registrant.findOne({
+              organizationId: org._id,
+              email: (req.body?.email || '').trim().toLowerCase(),
+            }).select('_id').lean()
+          : null;
+        if (existing) {
+          return res.status(409).json({ alreadyRegistered: true, registrantId: existing._id });
+        }
+      } catch { /* fall through */ }
+      return res.status(409).json({ error: 'This email address is already registered for this event' });
     }
     console.error('[public] register error:', err);
     return res.status(500).json({ error: 'Registration failed. Please try again.' });
@@ -594,8 +603,11 @@ async function getRegistrantDetail(req, res) {
       return res.status(404).json({ error: 'Registrant not found' });
     }
 
-    // Retrieve the event so we can attach the session name
-    const event = await Event.findOne({ organizationId: org._id }).select('sessions name');
+    // Retrieve event + page config (for location and calendar data)
+    const [event, pageConfig] = await Promise.all([
+      Event.findOne({ organizationId: org._id }).select('sessions name startDate endDate'),
+      PageConfig.findOne({ organizationId: org._id }).select('location'),
+    ]);
     const session = event?.sessions?.id
       ? event.sessions.id(registrant.sessionId?.toString())
       : null;
@@ -611,6 +623,9 @@ async function getRegistrantDetail(req, res) {
       sessionName:      session?.name          || null,
       sessionDate:      session?.date          || null,
       eventName:        event?.name            || null,
+      eventStartDate:   event?.startDate       || null,
+      eventEndDate:     event?.endDate         || null,
+      location:         pageConfig?.location   || null,
       isWaitlisted,
       waitlistPosition: registrant.waitlistPosition ?? null,
       waitlistStatus:   registrant.status      ?? null,
@@ -974,13 +989,94 @@ async function registerVip(req, res) {
     });
   } catch (err) {
     if (err.code === 11000) {
-      return res.status(409).json({
-        error: 'This email address is already registered as VIP for this event',
-      });
+      try {
+        const existing = org
+          ? await VipRegistrant.findOne({
+              organizationId: org._id,
+              email: (req.body?.email || '').trim().toLowerCase(),
+            }).select('_id').lean()
+          : null;
+        if (existing) {
+          return res.status(409).json({ alreadyRegistered: true, registrantId: existing._id });
+        }
+      } catch { /* fall through */ }
+      return res.status(409).json({ error: 'This email address is already registered as VIP for this event' });
     }
     console.error('[public] registerVip error:', err);
     return res.status(500).json({ error: 'VIP registration failed. Please try again.' });
   }
 }
 
-module.exports = { getFormConfig, createPaymentIntent, register, getRegistrantDetail, getVipFormConfig, registerVip };
+// ─── 7. POST /api/public/:orgSlug/registrant/:id/resend ──────────────────────
+
+async function resendConfirmation(req, res) {
+  try {
+    const org = await findActiveOrg(req.params.orgSlug);
+    if (!org) return res.status(404).json({ error: 'Not found' });
+
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(400).json({ error: 'Invalid registrant ID' });
+    }
+
+    // Find registrant in any of the four collections
+    let registrant   = null;
+    let isWaitlisted = false;
+    let isVip        = false;
+
+    registrant = await Registrant.findOne({ _id: req.params.id, organizationId: org._id }).lean();
+
+    if (!registrant) {
+      registrant = await VipRegistrant.findOne({ _id: req.params.id, organizationId: org._id }).lean();
+      if (registrant) isVip = true;
+    }
+    if (!registrant) {
+      registrant = await WaitlistRegistrant.findOne({ _id: req.params.id, organizationId: org._id }).lean();
+      if (registrant) isWaitlisted = true;
+    }
+    if (!registrant) {
+      registrant = await VipWaitlistRegistrant.findOne({ _id: req.params.id, organizationId: org._id }).lean();
+      if (registrant) { isWaitlisted = true; isVip = true; }
+    }
+    if (!registrant) return res.status(404).json({ error: 'Registrant not found' });
+
+    const [event, emailTemplate, vipEmailTemplate, stdPageConfig, vipPageConfig] = await Promise.all([
+      Event.findOne({ organizationId: org._id }).select('sessions name'),
+      EmailTemplate.findOne({ organizationId: org._id }),
+      VipEmailTemplate.findOne({ organizationId: org._id }),
+      PageConfig.findOne({ organizationId: org._id }).select('logoUrl'),
+      VipPageConfig.findOne({ organizationId: org._id }).select('logoUrl'),
+    ]);
+
+    const template   = (isVip && vipEmailTemplate?.subject) ? vipEmailTemplate : emailTemplate;
+    const pageConfig = isVip ? vipPageConfig : stdPageConfig;
+    const session    = event?.sessions?.id?.(registrant.sessionId?.toString()) || null;
+
+    const qrCodeDataUrl = (!isWaitlisted && registrant.qrCode)
+      ? await generateQR(registrant.qrCode)
+      : null;
+
+    const baseUrl = process.env.CLIENT_USER_URL || '';
+    const confUrl = isVip
+      ? `${baseUrl}/${org.slug}/vip/confirmation/${registrant._id}`
+      : `${baseUrl}/${org.slug}/confirmation/${registrant._id}`;
+
+    await sendConfirmationEmail({
+      registrant:      { ...registrant, waitlistPosition: registrant.waitlistPosition },
+      event:           { name: event?.name },
+      session:         session ? { name: session.name, date: session.date } : null,
+      organization:    { name: org.name },
+      emailTemplate:   template,
+      qrCodeDataUrl,
+      logoUrl:         pageConfig?.logoUrl || null,
+      confirmationUrl: confUrl,
+      isWaitlisted,
+    });
+
+    return res.json({ success: true });
+  } catch (err) {
+    console.error('[public] resendConfirmation error:', err);
+    return res.status(500).json({ error: 'Could not resend email. Please try again.' });
+  }
+}
+
+module.exports = { getFormConfig, createPaymentIntent, register, getRegistrantDetail, getVipFormConfig, registerVip, resendConfirmation };

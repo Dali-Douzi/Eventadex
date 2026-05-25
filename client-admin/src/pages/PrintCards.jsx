@@ -59,6 +59,7 @@ const BackIcon = () => (
 
 export default function PrintCards() {
   const toast = useToast();
+
   const [query,       setQuery]      = useState('');
   const [status,      setStatus]     = useState('idle'); // idle|searching|found|not-found|error
   const [registrant,  setReg]        = useState(null);
